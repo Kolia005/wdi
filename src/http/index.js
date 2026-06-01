@@ -12,6 +12,8 @@ app.get("/", (_, res) => {
   res.status(200).send("OK");
 });
 
+app.get("/health", (_, res) => res.status(200).json({ok:true,service:"wdi"}));
+
 app.get("/gay", (_, res) => {
   res.status(200).send("WORKS");
 });
