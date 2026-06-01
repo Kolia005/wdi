@@ -64,7 +64,7 @@ module.exports = {
      * @param {Interaction} interaction 
      */
     run: async (interaction) => {
-        switch (interaction.options._subcommand) {
+        switch (interaction.options.getSubcommand()) {
             case "grant":
                 require("../subcommands/whitelist/grant")(interaction);
                 break;

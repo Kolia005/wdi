@@ -59,16 +59,19 @@ module.exports = {
 
         let getPurchase = await Purchase.find({
             client: getClient._id
-        }).populate('product', '-tree -source').exec();
+        }).populate('product').exec();
+
+        const robloxUsername = await Roblox.getRobloxUsername(getClient.roblox).catch(() => getClient.roblox);
+        const targetUser = interaction.options.getUser('mention') === null ? interaction.user : interaction.options.getUser('mention');
 
         let Embed = new EmbedBuilder()
-            .setAuthor({ name: `${await Roblox.getRobloxUsername(getClient.roblox)}`, iconURL: `https://www.roblox.com/headshot-thumbnail/image?userId=${getClient.roblox}&width=420&height=420` })
+            .setAuthor({ name: `${robloxUsername}`, iconURL: `https://www.roblox.com/headshot-thumbnail/image?userId=${getClient.roblox}&width=420&height=420` })
             .setColor("0x2f3136")
             .setThumbnail(`https://www.roblox.com/headshot-thumbnail/image?userId=${getClient.roblox}&width=420&height=420&format=png`)
-            .setDescription(`**Whitelists**\n${getPurchase.length <= 0 ? "No whitelists" : getPurchase.map(p => p.product.name).join("\n")}`)
+            .setDescription(`**Whitelists**\n${getPurchase.length <= 0 ? "No whitelists" : getPurchase.map(p => p.product ? p.product.name : "(deleted product)").join("\n")}`)
             .setFooter({
-                text: `Profile for ${interaction.options.getUser('mention') === null ? interaction.user.tag : interaction.options.getUser('mention').tag} (${await Roblox.getRobloxUsername(getClient.roblox)} / ${getClient.roblox})`,
-                iconURL: interaction.options.getUser('mention') === null ? interaction.user.avatarURL() : interaction.options.getUser('mention').avatarURL()
+                text: `Profile for ${targetUser.tag} (${robloxUsername} / ${getClient.roblox})`,
+                iconURL: targetUser.avatarURL()
             })
         await interaction.editReply({
             embeds: [

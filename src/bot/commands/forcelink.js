@@ -19,27 +19,34 @@ const Roblox = require("../../util/Roblox.js");
 const Client = require("../../model/Client.js");
 const Whitelist = require("../../model/Whitelist.js");
 
-async function userLink(interaction, bo, di) {
-
-	let clientRecord = await Client.findOne({
-		discord: di
-	}).exec();
-
-	if (clientRecord) {
-		return false
+/**
+ * Links a Discord user to a Roblox id.
+ * @returns {Promise<{ok: boolean, reason?: string}>}
+ */
+async function userLink(robloxId, discordId) {
+	// Already linked to this Discord user?
+	let existingByDiscord = await Client.findOne({ discord: discordId }).exec();
+	if (existingByDiscord) {
+		return { ok: false, reason: "discord_linked" };
 	}
 
-	let newClient = new Client({
-		roblox: bo,
-		discord: di
-	});
+	// Roblox id already claimed by someone else? (roblox is a unique index)
+	let existingByRoblox = await Client.findOne({ roblox: robloxId.toString() }).exec();
+	if (existingByRoblox) {
+		return { ok: false, reason: "roblox_taken" };
+	}
 
-	await newClient.save().then(() => {
-		return true
-	}).catch(err => {
-		console.log(err)
-		return false
-	});
+	try {
+		const newClient = new Client({
+			roblox: robloxId.toString(),
+			discord: discordId
+		});
+		await newClient.save();
+		return { ok: true };
+	} catch (err) {
+		console.log(err);
+		return { ok: false, reason: "error" };
+	}
 };
 
 module.exports = {
@@ -60,15 +67,23 @@ module.exports = {
 
 	/**
 	 * @description Runs the command
-	 * @param {Interaction} interaction 
+	 * @param {Interaction} interaction
 	 */
 	run: async (interaction) => {
-		let test = await userLink(interaction, interaction.options.getString("robloxid"), interaction.options.getUser("mention").id);
+		const robloxId = interaction.options.getString("robloxid");
+		const mention = interaction.options.getUser("mention");
 
-		if (!test) {
-			return await interaction.editReply({ content: "user is already linked bozo!" })
+		const result = await userLink(robloxId, mention.id);
+
+		if (!result.ok) {
+			const messages = {
+				discord_linked: `<@${mention.id}> is already linked to a Roblox account. Use \`/unlink\` first if you want to relink them.`,
+				roblox_taken: `Roblox id \`${robloxId}\` is already linked to another Discord user.`,
+				error: "An unexpected error occurred while linking. Please try again."
+			};
+			return await interaction.editReply({ content: messages[result.reason] || messages.error });
 		}
 
-		await interaction.editReply({ content: `damn you forcelinked <@${interaction.options.getUser("mention").id}>` })
+		await interaction.editReply({ content: `Successfully force-linked <@${mention.id}> to Roblox id \`${robloxId}\`.` })
 	},
 };

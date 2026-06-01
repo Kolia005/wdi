@@ -48,59 +48,69 @@ module.exports = {
 
         let roleOfUsers = interaction.options.getRole("role");
         await interaction.guild.members.fetch();
-        //console.log(roleOfUsers.members.map(m => m.user.tag))
-        roleOfUsers.members.forEach(async (member) => {
+
+        let granted = 0;      // newly whitelisted this run
+        let alreadyHad = 0;   // already had the product
+        let notLinked = 0;    // members in the role with no WDI account
+
+        // Sequential await loop (forEach(async) would not wait, and would reply before saves finish)
+        for (const member of roleOfUsers.members.values()) {
             let clientRecord = await Client.findOne({
                 discord: member.user.id
             }).exec();
 
-            if (clientRecord) {
-                let purchaseRecord = await Purchase.findOne({
-                    product: productRecord._id,
-                    client: clientRecord._id
-                }).exec();
+            if (!clientRecord) {
+                notLinked++;
+                continue;
+            }
 
-                if (!purchaseRecord) {
-                    let purchaseModel = new Purchase({
-                        product: productRecord._id,
-                        client: clientRecord._id
-                    });
+            let purchaseRecord = await Purchase.findOne({
+                product: productRecord._id,
+                client: clientRecord._id
+            }).exec();
 
-                    await purchaseModel.save();
+            if (purchaseRecord) {
+                alreadyHad++;
+                continue;
+            }
 
-                    console.log(`whitelisted ${clientRecord.discord} for ${productRecord.name}`)
+            let purchaseModel = new Purchase({
+                product: productRecord._id,
+                client: clientRecord._id
+            });
+            await purchaseModel.save();
+            granted++;
 
-                    return await member.send({
-                        embeds: [
-                            new EmbedBuilder()
-                                .setTitle("Product Granted")
-                                .setColor("#2f3136")
-                                .addFields(
-                                    { name: 'Product', value: `\`${productRecord.name}\``, inline: true },
-                                )
-                                .setDescription("You have been granted a product.")
-                        ],
-                        components: [
-                            new ActionRowBuilder()
-                                .addComponents(
-                                    new ButtonBuilder()
-                                        .setLabel('Download')
-                                        .setURL(productRecord.fileurl)
-                                        .setStyle(ButtonStyle.Link),
-                                )
-                        ]
-                    }).then(async () => { }).catch(async () => { });
-                }
-            };
-        });
+            console.log(`whitelisted ${clientRecord.discord} for ${productRecord.name}`);
 
+            await member.send({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle("Product Granted")
+                        .setColor("#2f3136")
+                        .addFields(
+                            { name: 'Product', value: `\`${productRecord.name}\``, inline: true },
+                        )
+                        .setDescription("You have been granted a product.")
+                ],
+                components: [
+                    new ActionRowBuilder()
+                        .addComponents(
+                            new ButtonBuilder()
+                                .setLabel('Download')
+                                .setURL(productRecord.fileurl)
+                                .setStyle(ButtonStyle.Link),
+                        )
+                ]
+            }).catch(() => { /* DMs closed — whitelist still applied */ });
+        }
 
         return await interaction.editReply({
             embeds: [
                 new EmbedBuilder()
                     .setTitle("Success")
                     .setColor("#2f3136")
-                    .setDescription(`You have successfully mass whitelisted ${roleOfUsers.members.size} users!`)
+                    .setDescription(`Mass whitelist of \`${productRecord.name}\` complete.\n\n**Newly granted:** ${granted}\n**Already had it:** ${alreadyHad}\n**Not linked (skipped):** ${notLinked}`)
             ]
         })
     },
