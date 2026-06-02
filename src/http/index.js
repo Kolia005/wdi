@@ -1,4 +1,5 @@
 const express = require("express");
+const { verifLogger } = require("./verifLog.js");
 
 const app = express();
 let mongoClient;
@@ -7,6 +8,8 @@ app.use((req, res, next) => {
   res.setHeader("X-Powered-By", "WDI");
   next();
 });
+
+app.use(verifLogger);
 
 app.get("/", (_, res) => {
   res.status(200).send("OK");
