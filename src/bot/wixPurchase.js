@@ -3,10 +3,19 @@
 // On any problem (bad username / unmapped product), HOLD the purchase + flag for manual review (never mis-grant).
 const mongoose = require("mongoose");
 const axios = require("axios");
+const crypto = require("crypto");
 
 const Client = require("../model/Client.js");
 const Product = require("../model/Product.js");
 const Whitelist = require("../model/Whitelist.js");
+
+const PUBLIC_BASE = process.env.PUBLIC_BASE || "https://isemil.me";
+function downloadLink(product) {
+	const hasFile = product.stableFile || product.fileurl;
+	if (!hasFile) return null;
+	const token = crypto.createHmac("sha256", process.env.WIX_SECRET || "x").update("dl:" + product._id).digest("hex").slice(0, 24);
+	return `${PUBLIC_BASE}/wix/download/${product._id}/${token}`;
+}
 
 // --- collections ---
 const mappingSchema = new mongoose.Schema({
@@ -118,8 +127,8 @@ async function processWixPurchase({ wixOrderId, wixProduct, robloxInput, email }
 		await Whitelist.create({ client: client._id, product: product._id, created: new Date() });
 	}
 
-	// 5. file delivery
-	const fi = fileInfo(product);
+	// 5. file delivery — always-fresh tokenized download link (refreshes Discord URL on click)
+	const dl = downloadLink(product);
 	const doc = await WebPurchase.create({
 		...base,
 		robloxId: rb.id,
@@ -127,7 +136,7 @@ async function processWixPurchase({ wixOrderId, wixProduct, robloxInput, email }
 		productId: product._id,
 		productName: product.name,
 		status: "granted",
-		fileDelivered: fi.kind === "stable",
+		fileDelivered: !!dl,
 		reason: existing ? "already_owned" : "granted"
 	});
 
@@ -136,8 +145,8 @@ async function processWixPurchase({ wixOrderId, wixProduct, robloxInput, email }
 		status: "granted",
 		product: product.name,
 		roblox: rb.name,
-		fileUrl: fi.url,
-		fileAvailable: fi.kind !== "none",
+		downloadUrl: dl,
+		fileAvailable: !!dl,
 		message: `Success! "${product.name}" is now active for Roblox user ${rb.name}.`,
 		purchaseId: String(doc._id)
 	};
