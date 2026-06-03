@@ -19,7 +19,8 @@ function downloadLink(product) {
 
 // --- collections ---
 const mappingSchema = new mongoose.Schema({
-	wixName: { type: String, unique: true }, // product name as it appears on Wix
+	wixProductId: { type: String, unique: true, sparse: true }, // Wix product ID — the reliable unique key
+	wixName: { type: String }, // human label (NOT unique — names can collide)
 	productId: mongoose.Schema.Types.ObjectId, // WDI product
 	productName: String,
 	at: { type: Date, default: Date.now }
@@ -29,6 +30,7 @@ const ProductMapping = mongoose.models.ProductMapping || mongoose.model("Product
 const purchaseSchema = new mongoose.Schema({
 	source: { type: String, default: "wix" },
 	wixOrderId: String,
+	wixProductId: String,
 	wixProduct: String,
 	robloxInput: String, // what the buyer typed
 	robloxId: String, // resolved
@@ -68,20 +70,25 @@ async function resolveRobloxId(input) {
 	return null;
 }
 
-async function mapProduct(wixProductName) {
+async function mapProduct(wixProductId, wixProductName) {
+	const id = String(wixProductId || "").trim();
 	const name = String(wixProductName || "").trim();
-	if (!name) return null;
-	// 1. explicit mapping
-	const m = await ProductMapping.findOne({ wixName: name });
-	if (m) {
-		const p = await Product.findById(m.productId);
-		if (p) return p;
+	// 1. explicit mapping by Wix product ID (handles duplicate names reliably)
+	if (id) {
+		const mById = await ProductMapping.findOne({ wixProductId: id });
+		if (mById) { const p = await Product.findById(mById.productId); if (p) return p; }
 	}
-	// 2. exact name match against WDI products
+	// 2. explicit mapping by name (legacy / when no id mapping exists)
+	if (name) {
+		const mByName = await ProductMapping.findOne({ wixName: name });
+		if (mByName) { const p = await Product.findById(mByName.productId); if (p) return p; }
+	}
+	if (!name) return null;
+	// 3. exact name match against WDI products
 	let p = await Product.findOne({ name });
 	if (p) return p;
-	// 3. case-insensitive match
-	p = await Product.findOne({ name: { $regex: `^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" } });
+	// 4. case-insensitive exact name match (collation — no regex escaping pitfalls)
+	p = await Product.findOne({ name }).collation({ locale: "en", strength: 2 });
 	return p || null;
 }
 
@@ -96,11 +103,11 @@ function fileInfo(product) {
  * Process a Wix purchase.
  * @returns {object} result for Wix to show the buyer + recorded WebPurchase
  */
-async function processWixPurchase({ wixOrderId, wixProduct, robloxInput, email }) {
-	const base = { source: "wix", wixOrderId, wixProduct, robloxInput, email, at: new Date() };
+async function processWixPurchase({ wixOrderId, wixProductId, wixProduct, robloxInput, email }) {
+	const base = { source: "wix", wixOrderId, wixProductId, wixProduct, robloxInput, email, at: new Date() };
 
-	// 1. map product
-	const product = await mapProduct(wixProduct);
+	// 1. map product (by Wix product ID first, then name)
+	const product = await mapProduct(wixProductId, wixProduct);
 	if (!product) {
 		const doc = await WebPurchase.create({ ...base, status: "held", reason: "product_not_mapped" });
 		return { ok: false, status: "held", reason: "product_not_mapped", message: "Your purchase is recorded but the product couldn't be matched automatically. Our team will set it up shortly.", purchaseId: String(doc._id) };

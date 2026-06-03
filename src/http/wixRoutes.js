@@ -46,9 +46,10 @@ router.get("/ping", (_req, res) => res.json({ ok: true, service: "wdi-wix" }));
 // Main purchase hook. body: { wixOrderId, wixProduct, robloxInput, email }
 router.post("/purchase", async (req, res) => {
 	try {
-		const { wixOrderId, wixProduct, robloxInput, roblox, email } = req.body || {};
+		const { wixOrderId, wixProductId, wixProduct, robloxInput, roblox, email } = req.body || {};
 		const result = await wix.processWixPurchase({
 			wixOrderId,
+			wixProductId,
 			wixProduct,
 			robloxInput: robloxInput || roblox,
 			email
