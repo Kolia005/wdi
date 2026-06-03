@@ -13,7 +13,6 @@ const Client = new Schema({
 
     discord: {
         type: String,
-        required: true
     },
 
     created: {
@@ -28,6 +27,15 @@ const Client = new Schema({
 
     membershipChecked: {
         type: Date,
+    },
+
+    source: {
+        type: String,
+        default: "discord",
+    },
+
+    email: {
+        type: String,
     },
 
 }, {
