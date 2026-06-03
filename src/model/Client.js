@@ -21,6 +21,15 @@ const Client = new Schema({
         default: Date.now,
     },
 
+    inServer: {
+        type: Boolean,
+        default: null,
+    },
+
+    membershipChecked: {
+        type: Date,
+    },
+
 }, {
     toJSON: {
         virtuals: true

@@ -3,10 +3,12 @@ const { Routes } = require('discord-api-types/v9');
 const { REST } = require('@discordjs/rest');
 const path = require("path");
 const fs = require("fs");
+const messaging = require("./messaging.js");
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.GuildMessageTyping,
         GatewayIntentBits.GuildMessageReactions,
@@ -98,6 +100,8 @@ function loadEvents() {
 
 client.once("ready", () => {
     console.log("Connected to Discord");
+    messaging.setClient(client);
+    messaging.bindGuild();
 
     client.user.setActivity(
         "for purchases",
