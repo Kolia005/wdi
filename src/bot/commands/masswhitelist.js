@@ -16,6 +16,7 @@ const {
 const Client = require("../../model/Client.js");
 const Product = require("../../model/Product.js");
 const Purchase = require("../../model/Whitelist.js");
+const { refreshDiscordUrl } = require("../fileDeliver.js");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -83,6 +84,7 @@ module.exports = {
 
             console.log(`whitelisted ${clientRecord.discord} for ${productRecord.name}`);
 
+            const freshUrl = await refreshDiscordUrl(productRecord.fileurl);
             await member.send({
                 embeds: [
                     new EmbedBuilder()
@@ -98,7 +100,7 @@ module.exports = {
                         .addComponents(
                             new ButtonBuilder()
                                 .setLabel('Download')
-                                .setURL(productRecord.fileurl)
+                                .setURL(freshUrl)
                                 .setStyle(ButtonStyle.Link),
                         )
                 ]

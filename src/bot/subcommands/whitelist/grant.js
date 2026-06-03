@@ -16,6 +16,7 @@ const {
 const Client = require("../../../model/Client.js");
 const Product = require("../../../model/Product.js");
 const Purchase = require("../../../model/Whitelist.js");
+const { refreshDiscordUrl } = require("../../fileDeliver.js");
 
 /**
  * A command
@@ -78,6 +79,8 @@ module.exports = async (interaction) => {
 
     await purchase.save();
 
+    const freshUrl = await refreshDiscordUrl(productRecord.fileurl);
+
     await interaction.options.getUser('mention').send({
         embeds: [
             new EmbedBuilder()
@@ -93,7 +96,7 @@ module.exports = async (interaction) => {
                 .addComponents(
                     new ButtonBuilder()
                         .setLabel('Download')
-                        .setURL(productRecord.fileurl)
+                        .setURL(freshUrl)
                         .setStyle(ButtonStyle.Link),
                 )
         ]

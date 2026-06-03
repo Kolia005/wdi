@@ -14,6 +14,7 @@ const {
 } = require("discord.js");
 
 const Roblox = require("../../util/Roblox.js");
+const { refreshDiscordUrl } = require("../fileDeliver.js");
 
 const Client = require("../../model/Client.js");
 const Product = require("../../model/Product.js");
@@ -85,7 +86,8 @@ module.exports = {
             });
         }
 
-        await interaction.user.send(`${getPP.fileurl}`)
+        const freshUrl = await refreshDiscordUrl(getPP.fileurl);
+        await interaction.user.send(`${freshUrl}`)
         await interaction.editReply("check your dms");
     },
 };
