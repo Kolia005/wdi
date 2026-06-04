@@ -32,11 +32,16 @@ async function userLink(robloxId, discordId) {
 
 	// Roblox id already claimed by someone else? (roblox is a unique index)
 	let existingByRoblox = await Client.findOne({ roblox: robloxId.toString() }).exec();
-	if (existingByRoblox) {
+	if (existingByRoblox && existingByRoblox.discord && existingByRoblox.discord !== discordId) {
 		return { ok: false, reason: "roblox_taken" };
 	}
 
 	try {
+		if (existingByRoblox) {
+			await Client.updateOne({ _id: existingByRoblox._id }, { $set: { discord: discordId } });
+			return { ok: true };
+		}
+
 		const newClient = new Client({
 			roblox: robloxId.toString(),
 			discord: discordId

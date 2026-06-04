@@ -30,11 +30,16 @@ async function userLink(interaction, userId) {
 
 	// If the target Roblox id already belongs to a DIFFERENT Discord user, block it.
 	let robloxOwner = await Client.findOne({ roblox: robloxId }).exec();
-	if (robloxOwner && robloxOwner.discord !== interaction.user.id) {
+	if (robloxOwner && robloxOwner.discord && robloxOwner.discord !== interaction.user.id) {
 		return { ok: false, reason: "roblox_taken" };
 	}
 
 	try {
+		if (robloxOwner) {
+			await Client.updateOne({ _id: robloxOwner._id }, { $set: { discord: interaction.user.id } });
+			return { ok: true };
+		}
+
 		if (clientRecord) {
 			await Client.updateOne(
 				{ _id: clientRecord._id },
