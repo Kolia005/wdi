@@ -13,9 +13,16 @@ const schema = new mongoose.Schema({
         maxlength: [256, "Description cannot be longer than 256 characters"],
         required: true,
     },
-    
+
     fileurl: {
         type: String,
+    },
+
+    // Roblox asset IDs of this product's PRIVATE meshes. Used by the experience-whitelisting
+    // feature to grant a buyer's universe permission to load these meshes. Populate at launch.
+    meshAssetIds: {
+        type: [String],
+        default: [],
     },
 
     file: {
