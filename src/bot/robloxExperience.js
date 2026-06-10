@@ -81,33 +81,45 @@ async function entitledAssetIds(clientId) {
 	return [...ids];
 }
 
-// Grant a universe permission to use the given mesh assets, via Roblox Open Cloud.
+// Grant a universe permission to use the given assets (meshes/audio/etc.), via Roblox Open Cloud.
+// Endpoint verified live 2026-06-10: ONE call grants a LIST of assets to ONE universe.
+//   PATCH https://apis.roblox.com/asset-permissions-api/v1/assets/permissions
+//   body: { subjectType:"Universe", subjectId:"<universeId>", action:"Use", assetIds:[...] }
+//   resp: { successAssetIds:[...], errors:[{ assetId, code }] }  (asset ids come back numeric)
 // Returns { ok, pending, reason, granted, total, results }.
 // Dormant until ROBLOX_OPEN_CLOUD_KEY is set; with no assets configured yet it also stays pending.
+const GRANT_BATCH = 50; // no documented batch cap; stay conservative
+
 async function grantUniversePermission(universeId, assetIds) {
 	const key = process.env.ROBLOX_OPEN_CLOUD_KEY;
 	if (!key) return { ok: false, pending: true, reason: "no_api_key" };
 	if (!assetIds || !assetIds.length) return { ok: false, pending: true, reason: "no_assets_configured" };
 
-	// ⚠️ LAUNCH TODO: confirm this exact endpoint + body against current Open Cloud docs
-	// (create.roblox.com/docs/cloud/api/asset-permissions). Could not be tested without a key.
+	const ids = [...new Set(assetIds.map(a => String(a).trim()).filter(Boolean))];
 	const results = [];
-	for (const assetId of assetIds) {
+	for (let i = 0; i < ids.length; i += GRANT_BATCH) {
+		const batch = ids.slice(i, i + GRANT_BATCH);
 		try {
 			const resp = await axios.request({
 				method: "patch",
-				url: `https://apis.roblox.com/asset-permissions-api/v1/assets/${assetId}/permissions`,
+				url: "https://apis.roblox.com/asset-permissions-api/v1/assets/permissions",
 				headers: { "x-api-key": key, "content-type": "application/json" },
-				data: { requests: [{ subjectType: "Universe", subjectId: String(universeId), action: "Use" }] },
+				data: { subjectType: "Universe", subjectId: String(universeId), action: "Use", assetIds: batch },
 				timeout: TIMEOUT
 			});
-			results.push({ assetId, ok: resp.status >= 200 && resp.status < 300 });
+			const okSet = new Set(((resp.data && resp.data.successAssetIds) || []).map(String));
+			const errMap = new Map(((resp.data && resp.data.errors) || []).map(e => [String(e.assetId), e.code || "unknown"]));
+			for (const id of batch) {
+				if (okSet.has(id)) results.push({ assetId: id, ok: true });
+				else results.push({ assetId: id, ok: false, error: errMap.get(id) || "not_in_response" });
+			}
 		} catch (e) {
-			results.push({ assetId, ok: false, error: (e.response && e.response.status) || e.message });
+			const status = (e.response && e.response.status) || e.message;
+			for (const id of batch) results.push({ assetId: id, ok: false, error: status });
 		}
 	}
-	const allOk = results.length > 0 && results.every(r => r.ok);
-	return { ok: allOk, pending: false, granted: results.filter(r => r.ok).length, total: results.length, results };
+	const granted = results.filter(r => r.ok).length;
+	return { ok: granted === results.length && results.length > 0, pending: false, granted, total: results.length, results };
 }
 
 // Launch backfill: apply grants for all previously-verified ("pending") experiences.
