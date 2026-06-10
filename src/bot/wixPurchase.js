@@ -132,6 +132,8 @@ async function processWixPurchase({ wixOrderId, wixProductId, wixProduct, roblox
 	const existing = await Whitelist.findOne({ client: client._id, product: product._id });
 	if (!existing) {
 		await Whitelist.create({ client: client._id, product: product._id, created: new Date() });
+		// top up their whitelisted experiences with the new product's assets (fire-and-forget)
+		require("./grantSync.js").afterWhitelistChange(client._id, "wix purchase");
 	}
 
 	// 5. file delivery — always-fresh tokenized download link (refreshes Discord URL on click)

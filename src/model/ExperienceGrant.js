@@ -15,6 +15,9 @@ const schema = new mongoose.Schema({
     assetIds: { type: [String], default: [] }, // mesh asset ids granted (when granted)
     status: { type: String, default: "pending" },
     error: { type: String },
+    flagged: { type: Boolean, default: false }, // ownership drift (possible group churn) — no new grants while set
+    flagReason: { type: String },
+    lastSyncAt: { type: Date },
     created: { type: Date, default: Date.now },
     grantedAt: { type: Date },
 });

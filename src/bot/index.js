@@ -4,6 +4,7 @@ const { REST } = require('@discordjs/rest');
 const path = require("path");
 const fs = require("fs");
 const messaging = require("./messaging.js");
+const grantSync = require("./grantSync.js");
 
 const client = new Client({
     intents: [
@@ -102,6 +103,8 @@ client.once("ready", () => {
     console.log("Connected to Discord");
     messaging.setClient(client);
     messaging.bindGuild();
+    grantSync.setClient(client);
+    grantSync.start();
 
     client.user.setActivity(
         "for purchases",

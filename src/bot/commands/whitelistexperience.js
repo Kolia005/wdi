@@ -8,7 +8,8 @@ const {
 const Client = require("../../model/Client.js");
 const Whitelist = require("../../model/Whitelist.js");
 const ExperienceGrant = require("../../model/ExperienceGrant.js");
-const { resolveExperience, verifyOwnership, entitledAssetIds, grantUniversePermission } = require("../robloxExperience.js");
+const { resolveExperience, verifyOwnership, grantUniversePermission } = require("../robloxExperience.js");
+const grantSync = require("../grantSync.js");
 
 const COLOR = "0x2f3136";
 const embed = (t, d) => new EmbedBuilder().setTitle(t).setDescription(d).setColor(COLOR);
@@ -58,8 +59,8 @@ module.exports = {
 
 		const viaTxt = own.via === "group" ? " (verified via the group you own)" : "";
 
-		// 5) assets are strictly scoped to this customer's purchases
-		const assetIds = await entitledAssetIds(client._id);
+		// 5) meshes scoped to their purchases + the global sound library
+		const assetIds = await grantSync.fullEntitlement(client._id);
 
 		// 6) attempt the grant (dormant until the Open Cloud key + mesh IDs exist)
 		let result;
@@ -90,9 +91,12 @@ module.exports = {
 			{ upsert: true, new: true }
 		);
 
+		// churn watch: one customer whitelisting under multiple different groups
+		grantSync.checkCrossGroup(client._id).catch(() => {});
+
 		// 8) reply
 		if (result.ok) {
-			return interaction.editReply({ embeds: [embed("✅ Whitelisted", `Your **${wlCount}** product(s) now have mesh access in **${exp.name || exp.universeId}**${viaTxt}.`)] });
+			return interaction.editReply({ embeds: [embed("✅ Whitelisted", `Your **${wlCount}** product(s) + the sound library now load in **${exp.name || exp.universeId}**${viaTxt}.`)] });
 		}
 		if (result.reason === "error") {
 			return interaction.editReply({ embeds: [embed("Saved — grant needs a retry", `Confirmed you own **${exp.name || exp.universeId}**${viaTxt}, but the grant hit an error. It's saved and we'll re-apply it. No action needed from you.`)] });

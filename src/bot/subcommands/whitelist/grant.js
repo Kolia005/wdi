@@ -79,6 +79,9 @@ module.exports = async (interaction) => {
 
     await purchase.save();
 
+    // top up this customer's whitelisted experiences with the new product's assets
+    require("../../grantSync.js").afterWhitelistChange(clientRecord._id, "whitelist grant");
+
     const freshUrl = await refreshDiscordUrl(productRecord.fileurl);
 
     await interaction.options.getUser('mention').send({
