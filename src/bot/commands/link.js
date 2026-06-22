@@ -96,6 +96,11 @@ async function handleVerifyMethod(interaction) {
 				resp = await axios.get(`https://api.blox.link/v4/public/guilds/${GUILD_ID}/discord-to-roblox/${interaction.user.id}`, { headers: { Authorization: BLOXLINK_API_KEY }, timeout: HTTP_TIMEOUT });
 			} catch (e) {
 				const status = e.response ? e.response.status : null;
+				const apiErr = e.response && e.response.data && e.response.data.error;
+				if (apiErr === "Unknown Guild") {
+					// Bloxlink bot isn't in this server -> the Server API can't work.
+					return interaction.editReply({ embeds: [embed("Bloxlink not set up", "Bloxlink isn't connected to this server yet — please use **RoVer** instead (run `/link` again and pick RoVer).")] });
+				}
 				if (status === 404) {
 					return interaction.editReply({ embeds: [embed("Error", "Your Discord account isn't linked to Bloxlink. Link it at <https://blox.link>, or use RoVer.")] });
 				}
