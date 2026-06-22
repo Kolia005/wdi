@@ -1,5 +1,7 @@
 const { Interaction, EmbedBuilder } = require("discord.js");
 
+const errEmbed = (desc) => new EmbedBuilder().setTitle("Error").setDescription(desc).setColor("0x2f3136");
+
 /**
  * @param {discord.Client} client
  */
@@ -9,10 +11,24 @@ module.exports = exports = (client) => {
      * @param {Interaction} interaction
      */
     client.on("interactionCreate", async (interaction) => {
+
+        // --- Component interactions: handled persistently (survive bot restarts,
+        //     unlike the old in-memory awaitMessageComponent collectors) ---
+        if (interaction.isSelectMenu && interaction.isSelectMenu()) {
+            try {
+                const link = client.commands.get("link");
+                if (link && typeof link.handleVerifyMethod === "function" && interaction.customId === link.selectId) {
+                    await link.handleVerifyMethod(interaction);
+                }
+            } catch (e) {
+                console.log("[interaction] select handler error:", e);
+            }
+            return;
+        }
+
         if (!interaction.isChatInputCommand()) return;
 
         const command = client.commands.get(interaction.commandName);
-
         if (!command) return;
 
         try {
@@ -22,37 +38,21 @@ module.exports = exports = (client) => {
                 } catch (e) {
                     console.log(`Error in command ${interaction.commandName} (or middleware): ${e}`);
                     try {
-                        await interaction.editReply({
-                            embeds: [
-                                new EmbedBuilder()
-                                    .setTitle("Error")
-                                    .setDescription(`An error occurred executing the \`${interaction.commandName}\` command. Please try again later.`)
-                                    .setColor("0x2f3136")
-                            ],
-                            ephemeral: true
-                        });
+                        await interaction.editReply({ embeds: [errEmbed(`An error occurred executing the \`${interaction.commandName}\` command. Please try again later.`)], ephemeral: true });
                     } catch (err) {
-                        await interaction.channel.send({
-                            embeds: [
-                                new EmbedBuilder()
-                                    .setTitle("Error")
-                                    .setDescription(`An error occurred executing the \`${interaction.commandName}\` command. Please try again later.`)
-                                    .setColor("0x2f3136")
-                            ]
-                        });
+                        try {
+                            await interaction.channel.send({ embeds: [errEmbed(`An error occurred executing the \`${interaction.commandName}\` command. Please try again later.`)] });
+                        } catch (_) { /* channel gone — give up quietly */ }
                     }
                 }
+            }).catch((e) => {
+                console.log(`Could not defer ${interaction.commandName}: ${e}`);
             });
         } catch (err) {
             console.log(err);
-            await interaction.channel.send({
-                embeds: [
-                    new EmbedBuilder()
-                        .setTitle("Error")
-                        .setDescription(`Unknown Command - ID: \`${interaction.commandId}\``)
-                        .setColor("0x2f3136")
-                ]
-            });
+            try {
+                await interaction.channel.send({ embeds: [errEmbed(`Unknown Command - ID: \`${interaction.commandId}\``)] });
+            } catch (_) { /* ignore */ }
         }
     });
 };

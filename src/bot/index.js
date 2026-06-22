@@ -6,6 +6,16 @@ const fs = require("fs");
 const messaging = require("./messaging.js");
 const grantSync = require("./grantSync.js");
 
+// Global safety nets: a single stray promise rejection / thrown error must NEVER take
+// the whole bot down (on Node 16 an unhandled rejection crashes the process by default,
+// which would kill everyone's in-flight interactions -> "interaction failed").
+process.on("unhandledRejection", (reason) => {
+    console.log("[unhandledRejection]", (reason && reason.stack) ? reason.stack : reason);
+});
+process.on("uncaughtException", (err) => {
+    console.log("[uncaughtException]", (err && err.stack) ? err.stack : err);
+});
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
