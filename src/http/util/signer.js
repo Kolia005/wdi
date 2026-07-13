@@ -23,11 +23,20 @@ function signMessage(str) {
     return crypto.sign(null, Buffer.from(str, "utf8"), k).toString("base64");
 }
 
-// Sign a payload object -> { v, payload(b64 of the canonical JSON), sig }.
-function signPayload(obj) {
-    const s = JSON.stringify(obj);
-    const sig = signMessage(s);
-    return { v: 1, payload: Buffer.from(s, "utf8").toString("base64"), sig: sig || "" };
+// HMAC-SHA256 of a string with the shared secret (Phase 2a: the in-game gate verifies this,
+// so a faked /verify server can't produce a valid MAC). Key is used verbatim (a hex string).
+function hmacHex(str) {
+    const secret = process.env.VERIFY_HMAC_SECRET;
+    if (!secret) return "";
+    return crypto.createHmac("sha256", secret).update(str, "utf8").digest("hex");
 }
 
-module.exports = { key, signMessage, signPayload };
+// Sign a payload object -> { v, payload(b64 of the canonical JSON), sig, hmac }.
+// hmac is over the base64 `payload` string (what the client also HMACs).
+function signPayload(obj) {
+    const s = JSON.stringify(obj);
+    const payloadB64 = Buffer.from(s, "utf8").toString("base64");
+    return { v: 1, payload: payloadB64, sig: signMessage(s) || "", hmac: hmacHex(payloadB64) };
+}
+
+module.exports = { key, signMessage, signPayload, hmacHex };
