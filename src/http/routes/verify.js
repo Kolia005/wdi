@@ -1,14 +1,17 @@
 // Signed license-verification endpoint for the in-game whitelist gate.
 //   GET /verify?place=<placeId>&universe=<universeId>[&product=<name>][&nonce=<n>]
 // Returns an Ed25519-SIGNED assertion bound to the universe:
-//   { u, p, prod, lic, packs, killed, iat, nonce }
-//   - packs   = the owner's FULL entitlement (every product/pack they own) -> the in-game gate
-//               does pack checks (AVCS, US_Pack, ...) as LOCAL lookups, so ONE ping covers all.
-//   - killed  = remote-kill flag (dashboard-controlled); when set, lic=false and packs=[] so a
-//               killed game shuts down on its next check.
+//   { u, p, prod, lic, packs, killed, enf, iat, nonce }
+//   - packs  = the owner's FULL entitlement (every product/pack they own) -> the in-game gate does
+//              pack checks (AVCS, US_Pack, ...) as LOCAL lookups, so ONE ping covers all.
+//   - killed = remote-kill flag (dashboard); when set, lic=false, packs=[] -> game shuts down.
+//   - enf    = per-pack enforcement OVERRIDES { "<pack>": "entitlement"|"off" }. Absent pack = "full"
+//              (entitlement + rig-lock). "entitlement" = license only, rig-lock off. "off" = open to
+//              everyone. Signed, so only WDI controls it; a client can't flip it.
 const signer = require("../util/signer.js");
 const { resolveOwner, fullEntitlement } = require("../util/roblox.js");
 const KillList = require("../../model/KillList.js");
+const Setting = require("../../model/Setting.js");
 const wrapAsync = require("../util/wrapAsync.js");
 
 async function isKilled(universeId, place, ownerId) {
@@ -19,6 +22,11 @@ async function isKilled(universeId, place, ownerId) {
     if (!or.length) return false;
     const hit = await KillList.findOne({ active: true, $or: or }).lean();
     return !!hit;
+}
+
+async function enforcementMap() {
+    const doc = await Setting.findOne({ key: "packEnforcement" }).lean();
+    return (doc && doc.value && typeof doc.value === "object") ? doc.value : {};
 }
 
 module.exports = wrapAsync(async (req, res) => {
@@ -35,8 +43,8 @@ module.exports = wrapAsync(async (req, res) => {
     const { universeId, ownerId } = await resolveOwner(place, universe);
     const packs = await fullEntitlement(ownerId);
     const killed = await isKilled(universeId, place, ownerId);
+    const enf = await enforcementMap();
 
-    // lic (for the specifically-queried product(s)) is a convenience; the gate really uses `packs`.
     const lic = !killed && (products.length ? products.every(p => packs.includes(p)) : packs.length > 0);
 
     const payload = {
@@ -46,6 +54,7 @@ module.exports = wrapAsync(async (req, res) => {
         lic: !!lic,
         packs: killed ? [] : packs,
         killed: !!killed,
+        enf,                       // per-pack enforcement overrides (global, signed)
         iat: Math.floor(Date.now() / 1000),
         nonce,
     };

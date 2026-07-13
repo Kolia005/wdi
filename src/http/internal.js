@@ -94,6 +94,31 @@ router.post("/unkill", async (req, res) => {
 	}
 });
 
+// --- Pack enforcement level (dashboard-controlled remote toggle). full | entitlement | off ---
+const Setting = require("../model/Setting.js");
+
+router.get("/enforce", async (_req, res) => {
+	try {
+		const doc = await Setting.findOne({ key: "packEnforcement" }).lean();
+		res.json({ ok: true, enforcement: (doc && doc.value) || {} });
+	} catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// body: { pack, mode: "full"|"entitlement"|"off" }  (full = default, clears the override)
+router.post("/enforce", async (req, res) => {
+	const { pack, mode } = req.body || {};
+	if (!pack || !["full", "entitlement", "off"].includes(mode)) {
+		return res.status(400).json({ ok: false, error: "pack + mode (full|entitlement|off) required" });
+	}
+	try {
+		const doc = await Setting.findOne({ key: "packEnforcement" }).lean();
+		const map = (doc && doc.value && typeof doc.value === "object") ? doc.value : {};
+		if (mode === "full") delete map[pack]; else map[pack] = mode;
+		await Setting.updateOne({ key: "packEnforcement" }, { $set: { value: map, updated: new Date() } }, { upsert: true });
+		res.json({ ok: true, enforcement: map });
+	} catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // --- Admin signer: sign a rig fingerprint for the initial pack manifest. body: { digest, pack, ver? } ---
 const signer = require("./util/signer.js");
 router.post("/sign", (req, res) => {
