@@ -52,4 +52,57 @@ router.post("/broadcast", async (req, res) => {
 	res.status(r.ok ? 200 : 400).json(r);
 });
 
+// --- Remote kill list (dashboard-controlled). Matches make /verify return signed killed:true. ---
+const KillList = require("../model/KillList.js");
+
+router.get("/kills", async (_req, res) => {
+	try {
+		const kills = await KillList.find({ active: true }).sort({ created: -1 }).lean();
+		res.json({ ok: true, kills });
+	} catch (e) {
+		res.status(500).json({ ok: false, error: e.message });
+	}
+});
+
+// body: { scope: "universe"|"place"|"user", value, reason?, by? }
+router.post("/kill", async (req, res) => {
+	const { scope, value, reason, by } = req.body || {};
+	if (!scope || !value || !["universe", "place", "user"].includes(scope)) {
+		return res.status(400).json({ ok: false, error: "scope (universe|place|user) and value required" });
+	}
+	try {
+		const doc = await KillList.findOneAndUpdate(
+			{ scope, value: String(value) },
+			{ $set: { scope, value: String(value), reason: reason || "", active: true, createdBy: by || "panel", created: new Date() } },
+			{ upsert: true, new: true }
+		);
+		res.json({ ok: true, kill: doc });
+	} catch (e) {
+		res.status(500).json({ ok: false, error: e.message });
+	}
+});
+
+// body: { scope, value }
+router.post("/unkill", async (req, res) => {
+	const { scope, value } = req.body || {};
+	if (!scope || !value) return res.status(400).json({ ok: false, error: "scope and value required" });
+	try {
+		const r = await KillList.updateOne({ scope, value: String(value) }, { $set: { active: false } });
+		res.json({ ok: true, modified: r.modifiedCount || 0 });
+	} catch (e) {
+		res.status(500).json({ ok: false, error: e.message });
+	}
+});
+
+// --- Admin signer: sign a rig fingerprint for the initial pack manifest. body: { digest, pack, ver? } ---
+const signer = require("./util/signer.js");
+router.post("/sign", (req, res) => {
+	const { digest, pack, ver } = req.body || {};
+	if (!digest || !pack) return res.status(400).json({ ok: false, error: "digest and pack required" });
+	const v = String(ver || "1");
+	const sig = signer.signMessage(`rig|${String(digest)}|${String(pack)}|${v}`);
+	if (!sig) return res.status(500).json({ ok: false, error: "signing unavailable (no key)" });
+	res.json({ ok: true, digest: String(digest), pack: String(pack), ver: v, sig });
+});
+
 module.exports = router;
