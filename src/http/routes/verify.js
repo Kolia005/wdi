@@ -59,5 +59,10 @@ module.exports = wrapAsync(async (req, res) => {
         nonce,
     };
 
+    // A licensing/kill endpoint must NEVER be cached (Cloudflare edge or Roblox HttpService),
+    // or a game gets stale entitlement/kill state.
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    res.set("CDN-Cache-Control", "no-store");
+    res.set("Pragma", "no-cache");
     return res.status(200).json(signer.signPayload(payload));
 });
