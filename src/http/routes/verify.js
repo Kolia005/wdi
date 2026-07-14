@@ -9,7 +9,7 @@
 //              (entitlement + rig-lock). "entitlement" = license only, rig-lock off. "off" = open to
 //              everyone. Signed, so only WDI controls it; a client can't flip it.
 const signer = require("../util/signer.js");
-const { resolveOwner, fullEntitlement } = require("../util/roblox.js");
+const { resolveOwner, fullEntitlement, universeGrants } = require("../util/roblox.js");
 const KillList = require("../../model/KillList.js");
 const Setting = require("../../model/Setting.js");
 const wrapAsync = require("../util/wrapAsync.js");
@@ -41,7 +41,11 @@ module.exports = wrapAsync(async (req, res) => {
     products = [...new Set(products)];
 
     const { universeId, ownerId } = await resolveOwner(place, universe);
-    const packs = await fullEntitlement(ownerId);
+    // entitlement = what the resolved owner owns, UNION explicit per-universe grants (covers private /
+    // unresolvable games whose owner API returns id 0 / "[UNKNOWN]"). Never derived from owner "0".
+    const ownerPacks = await fullEntitlement(ownerId);
+    const uniPacks = await universeGrants(universeId);
+    const packs = [...new Set([...ownerPacks, ...uniPacks])];
     const killed = await isKilled(universeId, place, ownerId);
     const enf = await enforcementMap();
 

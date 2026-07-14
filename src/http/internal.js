@@ -131,4 +131,40 @@ router.post("/sign", (req, res) => {
 	res.json({ ok: true, digest: String(digest), pack: String(pack), ver: v, sig: signer.signMessage(msg) || "", rsa });
 });
 
+// --- Explicit per-universe licenses (dashboard-controlled). For private/unresolvable games. ---
+const UniverseLicense = require("../model/UniverseLicense.js");
+
+router.get("/universe-licenses", async (_req, res) => {
+	try {
+		const list = await UniverseLicense.find({}).sort({ at: -1 }).lean();
+		res.json({ ok: true, licenses: list });
+	} catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// body: { universe, packs: ["Advanced Vehicle Combat System", ...], note?, by? }
+router.post("/universe-license", async (req, res) => {
+	const { universe, packs, note, by } = req.body || {};
+	if (!universe || !Array.isArray(packs)) {
+		return res.status(400).json({ ok: false, error: "universe + packs[] required" });
+	}
+	try {
+		const doc = await UniverseLicense.findOneAndUpdate(
+			{ universe: String(universe) },
+			{ $set: { universe: String(universe), packs: packs.map(String), note: note || "", createdBy: by || "panel", at: new Date() } },
+			{ upsert: true, new: true }
+		);
+		res.json({ ok: true, license: doc });
+	} catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// body: { universe }
+router.post("/universe-unlicense", async (req, res) => {
+	const { universe } = req.body || {};
+	if (!universe) return res.status(400).json({ ok: false, error: "universe required" });
+	try {
+		const r = await UniverseLicense.deleteOne({ universe: String(universe) });
+		res.json({ ok: true, removed: r.deletedCount || 0 });
+	} catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 module.exports = router;

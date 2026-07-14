@@ -48,4 +48,12 @@ async function fullEntitlement(ownerId) {
     return [...new Set(names)];
 }
 
-module.exports = { resolveOwner, fullEntitlement };
+// Explicit per-universe pack grants (for private/unresolvable games — see model UniverseLicense).
+async function universeGrants(universeId) {
+    if (!universeId) return [];
+    const UniverseLicense = require("../../model/UniverseLicense.js");
+    const doc = await UniverseLicense.findOne({ universe: String(universeId) }).lean();
+    return (doc && Array.isArray(doc.packs)) ? doc.packs : [];
+}
+
+module.exports = { resolveOwner, fullEntitlement, universeGrants };
