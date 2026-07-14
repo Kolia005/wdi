@@ -21,7 +21,8 @@ function downloadLink(product) {
 const mappingSchema = new mongoose.Schema({
 	wixProductId: { type: String, unique: true, sparse: true }, // Wix product ID — the reliable unique key
 	wixName: { type: String }, // human label (NOT unique — names can collide)
-	productId: mongoose.Schema.Types.ObjectId, // WDI product
+	productId: mongoose.Schema.Types.ObjectId, // WDI product (single-product mapping)
+	productIds: [mongoose.Schema.Types.ObjectId], // WDI products for a BUNDLE (one Wix listing -> many WDI products); takes precedence over productId
 	productName: String,
 	at: { type: Date, default: Date.now }
 });
@@ -36,8 +37,10 @@ const purchaseSchema = new mongoose.Schema({
 	robloxId: String, // resolved
 	robloxName: String,
 	email: String,
-	productId: mongoose.Schema.Types.ObjectId,
-	productName: String,
+	productId: mongoose.Schema.Types.ObjectId, // primary (first) granted product
+	productIds: [mongoose.Schema.Types.ObjectId], // all granted products (bundle-aware)
+	productName: String, // display label (may be a joined bundle name)
+	productNames: [String],
 	status: String, // granted | held | error | refunded
 	reason: String, // why held/errored
 	fileDelivered: Boolean,
@@ -70,26 +73,42 @@ async function resolveRobloxId(input) {
 	return null;
 }
 
-async function mapProduct(wixProductId, wixProductName) {
+// Resolve the WDI products a Wix purchase grants. Returns an ARRAY (a Wix listing may be a
+// BUNDLE that grants several WDI products, e.g. AVCS + US Military Vehicles Pack sold as one item).
+async function mapProducts(wixProductId, wixProductName) {
 	const id = String(wixProductId || "").trim();
 	const name = String(wixProductName || "").trim();
+	// resolve a mapping doc -> its product(s): productIds (bundle) takes precedence over productId
+	const fromMapping = async (mp) => {
+		if (!mp) return [];
+		const ids = (Array.isArray(mp.productIds) && mp.productIds.length) ? mp.productIds : (mp.productId ? [mp.productId] : []);
+		const found = [];
+		for (const pid of ids) { const p = await Product.findById(pid); if (p) found.push(p); }
+		return found;
+	};
 	// 1. explicit mapping by Wix product ID (handles duplicate names reliably)
 	if (id) {
-		const mById = await ProductMapping.findOne({ wixProductId: id });
-		if (mById) { const p = await Product.findById(mById.productId); if (p) return p; }
+		const ps = await fromMapping(await ProductMapping.findOne({ wixProductId: id }));
+		if (ps.length) return ps;
 	}
 	// 2. explicit mapping by name (legacy / when no id mapping exists)
 	if (name) {
-		const mByName = await ProductMapping.findOne({ wixName: name });
-		if (mByName) { const p = await Product.findById(mByName.productId); if (p) return p; }
+		const ps = await fromMapping(await ProductMapping.findOne({ wixName: name }));
+		if (ps.length) return ps;
 	}
-	if (!name) return null;
+	if (!name) return [];
 	// 3. exact name match against WDI products
 	let p = await Product.findOne({ name });
-	if (p) return p;
+	if (p) return [p];
 	// 4. case-insensitive exact name match (collation — no regex escaping pitfalls)
 	p = await Product.findOne({ name }).collation({ locale: "en", strength: 2 });
-	return p || null;
+	return p ? [p] : [];
+}
+
+// Backward-compatible single-product resolver (first product of the mapping).
+async function mapProduct(wixProductId, wixProductName) {
+	const ps = await mapProducts(wixProductId, wixProductName);
+	return ps[0] || null;
 }
 
 function fileInfo(product) {
@@ -106,17 +125,19 @@ function fileInfo(product) {
 async function processWixPurchase({ wixOrderId, wixProductId, wixProduct, robloxInput, email }) {
 	const base = { source: "wix", wixOrderId, wixProductId, wixProduct, robloxInput, email, at: new Date() };
 
-	// 1. map product (by Wix product ID first, then name)
-	const product = await mapProduct(wixProductId, wixProduct);
-	if (!product) {
+	// 1. map product(s) — a Wix listing may be a bundle that grants several WDI products
+	const products = await mapProducts(wixProductId, wixProduct);
+	if (!products.length) {
 		const doc = await WebPurchase.create({ ...base, status: "held", reason: "product_not_mapped" });
 		return { ok: false, status: "held", reason: "product_not_mapped", message: "Your purchase is recorded but the product couldn't be matched automatically. Our team will set it up shortly.", purchaseId: String(doc._id) };
 	}
+	const names = products.map(p => p.name);
+	const label = names.join(" + ");
 
 	// 2. resolve roblox
 	const rb = await resolveRobloxId(robloxInput);
 	if (!rb) {
-		const doc = await WebPurchase.create({ ...base, productId: product._id, productName: product.name, status: "held", reason: "roblox_unresolved" });
+		const doc = await WebPurchase.create({ ...base, productId: products[0]._id, productIds: products.map(p => p._id), productName: label, productNames: names, status: "held", reason: "roblox_unresolved" });
 		return { ok: false, status: "held", reason: "roblox_unresolved", message: "We couldn't find that Roblox username. Your purchase is saved — please contact us with your correct Roblox username and we'll activate it.", purchaseId: String(doc._id) };
 	}
 
@@ -128,35 +149,44 @@ async function processWixPurchase({ wixOrderId, wixProductId, wixProduct, roblox
 		await Client.updateOne({ _id: client._id }, { $set: { email } });
 	}
 
-	// 4. grant whitelist (idempotent)
-	const existing = await Whitelist.findOne({ client: client._id, product: product._id });
-	if (!existing) {
-		await Whitelist.create({ client: client._id, product: product._id, created: new Date() });
-		// top up their whitelisted experiences with the new product's assets (fire-and-forget)
+	// 4. grant whitelist for EVERY product in the bundle (idempotent)
+	let grantedAny = false;
+	for (const product of products) {
+		const existing = await Whitelist.findOne({ client: client._id, product: product._id });
+		if (!existing) {
+			await Whitelist.create({ client: client._id, product: product._id, created: new Date() });
+			grantedAny = true;
+		}
+	}
+	if (grantedAny) {
+		// top up their whitelisted experiences with the new products' assets (fire-and-forget, once)
 		require("./grantSync.js").afterWhitelistChange(client._id, "wix purchase");
 	}
 
-	// 5. file delivery — always-fresh tokenized download link (refreshes Discord URL on click)
-	const dl = downloadLink(product);
+	// 5. file delivery — one always-fresh tokenized link per product that has a file
+	const downloads = products.map(p => ({ product: p.name, url: downloadLink(p) })).filter(d => d.url);
 	const doc = await WebPurchase.create({
 		...base,
 		robloxId: rb.id,
 		robloxName: rb.name,
-		productId: product._id,
-		productName: product.name,
+		productId: products[0]._id,
+		productIds: products.map(p => p._id),
+		productName: label,
+		productNames: names,
 		status: "granted",
-		fileDelivered: !!dl,
-		reason: existing ? "already_owned" : "granted"
+		fileDelivered: downloads.length > 0,
+		reason: grantedAny ? "granted" : "already_owned"
 	});
 
 	return {
 		ok: true,
 		status: "granted",
-		product: product.name,
+		product: label,
 		roblox: rb.name,
-		downloadUrl: dl,
-		fileAvailable: !!dl,
-		message: `Success! "${product.name}" is now active for Roblox user ${rb.name}.`,
+		downloadUrl: downloads[0] ? downloads[0].url : null, // primary (backward compat)
+		downloadUrls: downloads,                              // all bundle files
+		fileAvailable: downloads.length > 0,
+		message: `Success! ${names.map(n => `"${n}"`).join(" and ")} ${names.length > 1 ? "are" : "is"} now active for Roblox user ${rb.name}.`,
 		purchaseId: String(doc._id)
 	};
 }
@@ -165,11 +195,13 @@ async function refundWixPurchase(wixOrderId) {
 	const purchase = await WebPurchase.findOne({ wixOrderId, status: "granted" });
 	if (!purchase) return { ok: false, reason: "no_matching_purchase" };
 	const client = await Client.findOne({ roblox: purchase.robloxId });
-	if (client && purchase.productId) {
-		await Whitelist.deleteOne({ client: client._id, product: purchase.productId });
+	if (client) {
+		// revoke every product in the bundle (fall back to the single productId for old records)
+		const ids = (Array.isArray(purchase.productIds) && purchase.productIds.length) ? purchase.productIds : (purchase.productId ? [purchase.productId] : []);
+		for (const pid of ids) await Whitelist.deleteOne({ client: client._id, product: pid });
 	}
 	await WebPurchase.updateOne({ _id: purchase._id }, { $set: { status: "refunded" } });
 	return { ok: true, product: purchase.productName, roblox: purchase.robloxName };
 }
 
-module.exports = { processWixPurchase, refundWixPurchase, mapProduct, resolveRobloxId, ProductMapping, WebPurchase };
+module.exports = { processWixPurchase, refundWixPurchase, mapProduct, mapProducts, resolveRobloxId, ProductMapping, WebPurchase };
