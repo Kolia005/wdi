@@ -1,15 +1,21 @@
-// Re-sign service (customer-facing, gated on pack ownership).
-//   POST /resign   body/query: { place|universe, digest, pack, ver? }
-// A legit owner who edits a bound rig submits its recomputed fingerprint `digest` here; if the
-// resolved owner of place/universe owns `pack`, we return a fresh signature so the edited rig keeps
-// working. A non-owner (thief) is refused. NB: the signature is a portable "this rig is <pack>"
-// assertion; the per-game entitlement from /verify is what actually gates running it — so a sig
-// obtained via someone else's licensed game is useless in a game that doesn't own the pack.
+// Re-sign service — ADMIN-only (INTERNAL_SECRET header), returns an RSA rig signature the in-game
+// gate actually verifies (WL.verifyRig does an RSA PKCS1/SHA-256 check).
+//   POST /resign   header: X-Internal-Secret;   body/query: { place|universe, digest, pack, ver? }
+// Re-signs an edited rig's fingerprint IF the resolved game owner owns `pack`.
+// NB: was previously public with a FAKE ownership gate — it checked the owner of whatever placeId
+// you passed, not the caller, so anyone could mint a valid "<pack>" signature using a licensed
+// game's public place ID. Now gated on the shared secret (nginx also restricts /resign to
+// localhost). A proper self-serve customer re-sign needs an authenticated caller-identity flow.
 const wrapAsync = require("../util/wrapAsync.js");
 const signer = require("../util/signer.js");
 const { resolveOwner, fullEntitlement } = require("../util/roblox.js");
 
 module.exports = wrapAsync(async (req, res) => {
+    const secret = process.env.INTERNAL_SECRET;
+    if (!secret || req.headers["x-internal-secret"] !== secret) {
+        return res.status(403).json({ ok: false, error: "forbidden" });
+    }
+
     const body = req.body || {};
     const place = body.place || req.query.place || null;
     const universe = body.universe || req.query.universe || null;
@@ -26,8 +32,10 @@ module.exports = wrapAsync(async (req, res) => {
         return res.status(403).json({ ok: false, error: "owner is not licensed for that pack" });
     }
 
-    const sig = signer.signMessage(`rig|${digest}|${pack}|${ver}`);
-    if (!sig) return res.status(500).json({ ok: false, error: "signing unavailable" });
+    const msg = `rig|${digest}|${pack}|${ver}`;
+    const rsa = signer.rsaSign(msg);
+    if (!rsa) return res.status(500).json({ ok: false, error: "signing unavailable (no RSA key)" });
 
-    return res.status(200).json({ ok: true, digest, pack, ver, sig });
+    // rsa = what the in-game WL.verifyRig checks (WLSig). sig (Ed25519) returned too for parity with /internal/sign.
+    return res.status(200).json({ ok: true, digest, pack, ver, rsa, sig: signer.signMessage(msg) || "" });
 });

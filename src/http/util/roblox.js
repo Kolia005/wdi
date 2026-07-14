@@ -22,7 +22,7 @@ async function resolveOwner(place, universe) {
         const g = await axios.get(`https://games.roblox.com/v1/games?universeIds=${universeId}`, { timeout: TIMEOUT });
         const game = g.data && g.data.data && g.data.data[0];
         if (!game || !game.creator) return { universeId, ownerId: null };
-        if (game.creator.type === "User") return { universeId, ownerId: String(game.creator.id) };
+        if (game.creator.type === "User") return { universeId, ownerId: game.creator.id ? String(game.creator.id) : null };
         if (game.creator.type === "Group") {
             const gr = await axios.get(`https://groups.roblox.com/v1/groups/${game.creator.id}`, { timeout: TIMEOUT });
             const ownerId = gr.data && gr.data.owner && gr.data.owner.userId ? String(gr.data.owner.userId) : null;
@@ -34,7 +34,9 @@ async function resolveOwner(place, universe) {
 
 // Every product name this owner is licensed for (their full entitlement / pack set).
 async function fullEntitlement(ownerId) {
-    if (!ownerId) return [];
+    // "0" is the Studio-test / failed-resolution sentinel — NEVER treat it as a real licensed owner
+    // (a client with roblox="0" must not license every game whose owner can't be resolved).
+    if (!ownerId || String(ownerId) === "0") return [];
     const client = await Client.findOne({ roblox: String(ownerId) }).lean();
     if (!client) return [];
     const wls = await Whitelist.find({ client: client._id }).lean();
