@@ -23,6 +23,22 @@ function signMessage(str) {
     return crypto.sign(null, Buffer.from(str, "utf8"), k).toString("base64");
 }
 
+// RSA-2048 PKCS1-v1.5/SHA-256 signature (Phase 2b: the in-game gate can verify this asymmetrically,
+// so even extracting the client can't forge a universal crack — no private key on the client).
+let _rsa = null, _rsaTried = false;
+function rsaKey() {
+    if (_rsaTried) return _rsa;
+    _rsaTried = true;
+    const b64 = process.env.VERIFY_RSA_PRIVATE_KEY_PEM;
+    if (b64) { try { _rsa = crypto.createPrivateKey(Buffer.from(b64, "base64").toString("utf8")); } catch (e) { console.log("[signer] bad RSA key:", e.message); } }
+    return _rsa;
+}
+function rsaSign(str) {
+    const k = rsaKey();
+    if (!k) return "";
+    return crypto.sign("sha256", Buffer.from(str, "utf8"), k).toString("base64");
+}
+
 // HMAC-SHA256 of a string with the shared secret (Phase 2a: the in-game gate verifies this,
 // so a faked /verify server can't produce a valid MAC). Key is used verbatim (a hex string).
 function hmacHex(str) {
@@ -36,7 +52,7 @@ function hmacHex(str) {
 function signPayload(obj) {
     const s = JSON.stringify(obj);
     const payloadB64 = Buffer.from(s, "utf8").toString("base64");
-    return { v: 1, payload: payloadB64, sig: signMessage(s) || "", hmac: hmacHex(payloadB64) };
+    return { v: 1, payload: payloadB64, sig: signMessage(s) || "", hmac: hmacHex(payloadB64), rsa: rsaSign(payloadB64) };
 }
 
-module.exports = { key, signMessage, signPayload, hmacHex };
+module.exports = { key, signMessage, signPayload, hmacHex, rsaSign };
