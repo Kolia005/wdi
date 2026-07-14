@@ -125,9 +125,10 @@ router.post("/sign", (req, res) => {
 	const { digest, pack, ver } = req.body || {};
 	if (!digest || !pack) return res.status(400).json({ ok: false, error: "digest and pack required" });
 	const v = String(ver || "1");
-	const sig = signer.signMessage(`rig|${String(digest)}|${String(pack)}|${v}`);
-	if (!sig) return res.status(500).json({ ok: false, error: "signing unavailable (no key)" });
-	res.json({ ok: true, digest: String(digest), pack: String(pack), ver: v, sig });
+	const msg = `rig|${String(digest)}|${String(pack)}|${v}`;
+	const rsa = signer.rsaSign(msg);
+	if (!rsa) return res.status(500).json({ ok: false, error: "signing unavailable (no RSA key)" });
+	res.json({ ok: true, digest: String(digest), pack: String(pack), ver: v, sig: signer.signMessage(msg) || "", rsa });
 });
 
 module.exports = router;
