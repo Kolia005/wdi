@@ -23,6 +23,7 @@ module.exports = wrapAsync(async (req, res) => {
         const prev = (doc && Array.isArray(doc.value)) ? doc.value.map(String) : [];
         const merged = replace ? clean : [...new Set([...prev, ...clean])];
         await Setting.updateOne({ key: "globalAudioAssetIds" }, { $set: { value: merged, updated: new Date() } }, { upsert: true });
+        await Setting.updateOne({ key: "assetEpoch" }, { $inc: { value: 1 } }, { upsert: true }); // re-propagate to granted universes
         return res.json({ ok: true, kind, added: clean.length, total: merged.length });
     }
 
@@ -33,6 +34,7 @@ module.exports = wrapAsync(async (req, res) => {
         const prev = Array.isArray(p.meshAssetIds) ? p.meshAssetIds.map(String) : [];
         const merged = replace ? clean : [...new Set([...prev, ...clean])];
         await Product.updateOne({ _id: p._id }, { $set: { meshAssetIds: merged } });
+        await Setting.updateOne({ key: "assetEpoch" }, { $inc: { value: 1 } }, { upsert: true }); // re-propagate to granted universes
         return res.json({ ok: true, kind, product: name, added: clean.length, total: merged.length });
     }
 

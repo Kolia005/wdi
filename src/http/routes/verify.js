@@ -63,6 +63,12 @@ module.exports = wrapAsync(async (req, res) => {
         nonce,
     };
 
+    // Auto-grant the entitled meshes/audio to this universe (fire-and-forget, deduped internally):
+    // a licensed game gets its Restricted assets granted on its first /verify, no manual step.
+    if (!killed && universeId && packs.length) {
+        require("../util/autograntUniverse.js").autoGrantUniverse(String(universeId), packs);
+    }
+
     // A licensing/kill endpoint must NEVER be cached (Cloudflare edge or Roblox HttpService),
     // or a game gets stale entitlement/kill state.
     res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
