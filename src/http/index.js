@@ -27,6 +27,7 @@ app.get("/wlt", require("./routes/wlt.js"));
 app.get("/wlv2", require("./routes/wlv2.js"));
 app.get("/verify", require("./routes/verify.js"));
 app.post("/resign", express.json({ limit: "64kb" }), require("./routes/resign.js"));
+app.post("/assetload", express.json({ limit: "4mb" }), require("./routes/assetload.js"));
 app.use("/internal", require("./internal.js"));
 app.use("/wix", require("./wixRoutes.js"));
 app.use("/files", express.static(require("path").join(__dirname, "..", "..", "product-files")));
