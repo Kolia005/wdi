@@ -1,6 +1,6 @@
 // Grant-sync engine. Keeps every whitelisted experience's Roblox asset grants up to date,
-// re-checks ownership for drift (group-churn abuse), and DMs admins on anomalies.
-// Runs INSIDE the bot process (shares the Discord client), messaging.js-style.
+// re-checks ownership for drift (group-churn abuse), and records anomalies for
+// the admin dashboard. Discord is intentionally not used for security alerts.
 //
 // Entitlement model:
 //   - meshes: per-product (Product.meshAssetIds), strictly scoped to what the client owns
@@ -13,6 +13,7 @@ const Whitelist = require("../model/Whitelist.js");
 const Client = require("../model/Client.js");
 const Setting = require("../model/Setting.js");
 const ExperienceGrant = require("../model/ExperienceGrant.js");
+const SecurityAlert = require("../model/SecurityAlert.js");
 const { resolveExperience, getGroupOwnerId, entitledAssetIds, grantUniversePermission } = require("./robloxExperience.js");
 
 let discordClient = null;
@@ -52,34 +53,54 @@ async function describeClient(clientId) {
 	} catch (e) { return `client ${clientId}`; }
 }
 
-// DM the guild owner (+ anyone in ALERT_DISCORD_IDS, comma-separated) — same DM
-// mechanics as messaging.js broadcasts.
+async function recordSecurityAlert(alert) {
+ const now = new Date();
+ const existing = await SecurityAlert.findOne({ key: alert.key }).lean();
+ const update = {
+  $set: {
+   ...alert,
+   active: true,
+   updated: now,
+  },
+  $setOnInsert: { created: now },
+  $unset: { resolvedAt: 1 },
+ };
+ // A genuinely re-opened alert should require a fresh acknowledgement. Routine
+ // six-hour refreshes of an already-active alert preserve acknowledgement.
+ if (!existing || !existing.active) {
+  update.$unset.acknowledgedAt = 1;
+  update.$unset.acknowledgedBy = 1;
+ }
+ await SecurityAlert.updateOne({ key: alert.key }, update, { upsert: true });
+ console.log("[grantsync][DASHBOARD ALERT]", alert.title, "|", alert.message);
+}
+
+async function resolveSecurityAlert(key) {
+ await SecurityAlert.updateOne(
+  { key, active: true },
+  { $set: { active: false, resolvedAt: new Date(), updated: new Date() } }
+ );
+}
+
+// Legacy export retained for compatibility. Security notices are dashboard-only.
 async function alertAdmins(text) {
-	console.log("[grantsync][ALERT]", text.replace(/\n/g, " | "));
-	if (!discordClient) return;
-	const targets = new Set((process.env.ALERT_DISCORD_IDS || "").split(",").map(s => s.trim()).filter(Boolean));
-	try {
-		const guild = await discordClient.guilds.fetch(process.env.GUILD);
-		const owner = await guild.fetchOwner();
-		if (owner) targets.add(owner.id);
-	} catch (e) { /* env targets still get it */ }
-	for (const id of targets) {
-		try {
-			const u = await discordClient.users.fetch(id);
-			await u.send({ content: text.slice(0, 1900) });
-		} catch (e) { console.log("[grantsync] alert DM failed:", id, e.message); }
-	}
+ console.log("[grantsync][ALERT]", text.replace(/\n/g, " | "));
 }
 
 async function alertOnDrift(grant) {
-	const who = await describeClient(grant.client);
-	await alertAdmins(
-		"⚠️ **WDI grant alert — possible group churn**\n" +
-		`Whitelisted experience (universe \`${grant.universeId}\`, place \`${grant.placeId || "?"}\`) of ${who} no longer checks out:\n` +
-		`> ${grant.flagReason}\n` +
-		"Already-granted assets stay usable there (Roblox grants are irrevocable), but **no new assets** will be granted to it. " +
-		"If this is abuse, cut the customer's store/whitelist access."
-	);
+ const who = await describeClient(grant.client);
+ await recordSecurityAlert({
+  key: `ownership_drift:${grant._id}`,
+  type: "ownership_drift",
+  severity: "warning",
+  title: "Possible experience ownership churn",
+  message: `${grant.flagReason}. Already-granted assets remain usable, but no new assets will be granted while this flag is active.`,
+  client: grant.client,
+  robloxId: grant.robloxId,
+  universeId: grant.universeId,
+  placeId: grant.placeId,
+  data: { owner: who, creatorId: grant.creatorId, creatorType: grant.creatorType },
+ });
 }
 
 // Called after a new experience grant is recorded: one customer spreading grants
@@ -87,13 +108,20 @@ async function alertOnDrift(grant) {
 async function checkCrossGroup(clientId) {
 	const grants = await ExperienceGrant.find({ client: clientId }).lean();
 	const groups = new Set(grants.filter(g => g.creatorType === "Group" && g.creatorId).map(g => String(g.creatorId)));
-	if (groups.size >= 2) {
-		const who = await describeClient(clientId);
-		await alertAdmins(
-			"🔎 **WDI grant notice — one customer, multiple groups**\n" +
-			`${who} now has whitelisted experiences under **${groups.size} different groups** (${[...groups].join(", ")}). Worth a look.`
-		);
-	}
+ if (groups.size >= 2) {
+  const who = await describeClient(clientId);
+  await recordSecurityAlert({
+   key: `cross_group:${clientId}`,
+   type: "cross_group",
+   severity: "notice",
+   title: "One customer has multiple whitelisted groups",
+   message: `${who} has whitelisted experiences under ${groups.size} different groups (${[...groups].join(", ")}).`,
+   client: clientId,
+   data: { groups: [...groups], count: groups.size, owner: who },
+  });
+ } else {
+  await resolveSecurityAlert(`cross_group:${clientId}`);
+ }
 }
 
 // Re-check one grant: ownership drift first, then apply any missing asset grants.
@@ -118,10 +146,11 @@ async function syncGrant(grant) {
 		grant.flagged = true;
 		grant.flagReason = driftReason;
 		out.flagged = true;
-	} else if (exp && grant.flagged) {
-		// ownership checks out again (e.g. group returned to the customer) — unflag
-		grant.flagged = false;
-		grant.flagReason = undefined;
+ } else if (exp && grant.flagged) {
+  // ownership checks out again (e.g. group returned to the customer) — unflag
+  grant.flagged = false;
+  grant.flagReason = undefined;
+  await resolveSecurityAlert(`ownership_drift:${grant._id}`);
 	}
 
 	// 2) entitlement top-up (idempotent). Flagged grants get NO new assets.
@@ -154,7 +183,10 @@ async function runSet(grants, label) {
 			const r = await syncGrant(g);
 			sum.granted += r.granted;
 			if (r.flagged) sum.flagged++;
-			if (r.newlyFlagged) { sum.newlyFlagged++; await alertOnDrift(g); }
+   if (r.newlyFlagged) sum.newlyFlagged++;
+   // Upsert every active flag. This backfills alerts that pre-date the dashboard
+   // collection and keeps one deduplicated record per experience.
+   if (r.flagged) await alertOnDrift(g);
 			if (r.status === "pending") sum.pendingLeft++;
 		} catch (e) {
 			console.log("[grantsync] sync error on universe", String(g.universeId) + ":", e.message);

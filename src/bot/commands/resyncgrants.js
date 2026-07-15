@@ -64,7 +64,7 @@ module.exports = {
 			`Experiences checked: **${sum.total}**\n` +
 			`New asset grants applied: **${sum.granted}**\n` +
 			`Still pending (no assets configured): **${sum.pendingLeft}**\n` +
-			`Flagged for ownership drift: **${sum.flagged}**` + (sum.newlyFlagged ? ` (⚠️ **${sum.newlyFlagged}** new — check your DMs)` : "");
+   `Flagged for ownership drift: **${sum.flagged}**` + (sum.newlyFlagged ? ` (**${sum.newlyFlagged}** new — check the Security page in the admin dashboard)` : "");
 
 		const flagged = await ExperienceGrant.find({ flagged: true }).limit(10).lean();
 		if (flagged.length) {
