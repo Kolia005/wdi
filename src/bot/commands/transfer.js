@@ -13,6 +13,7 @@ const Whitelist = require("../../model/Whitelist.js");
 const Product = require("../../model/Product.js");
 const Roblox = require("../../util/Roblox.js");
 const { resolveRobloxId } = require("../wixPurchase.js");
+const transferService = require("../transferService.js");
 
 const COLOR = "0x2f3136";
 const embed = (title, desc) => new EmbedBuilder().setTitle(title).setDescription(desc).setColor(COLOR);
@@ -141,43 +142,23 @@ module.exports = {
 
 		try {
 			const mode = btn.customId; // tr_confirm | tr_merge | tr_overwrite
-			let moved = 0, skipped = 0, removedFromTarget = 0;
-			let discordNote = "";
+			const operation = await transferService.executeTransfer({
+				sourceClientId: source._id,
+				destinationRoblox: dest.id,
+				mode,
+				actorDiscord: interaction.user.id,
+			});
+			if (!operation || operation.status !== "complete") throw new Error("transfer is journaled and waiting for recovery");
 
-			if (!target) {
-				// Simplest case: reassign the source client's Roblox id. All whitelists + the Discord link ride along.
-				await Client.updateOne({ _id: source._id }, { $set: { roblox: dest.id } });
-				moved = sourceWls.length;
-				if (source.discord) discordNote = `Discord <@${source.discord}> is now linked to ${toLine}.`;
-			} else {
-				// Target account already exists as its own client. Move whitelists across.
-				if (mode === 'tr_overwrite') {
-					const del = await Whitelist.deleteMany({ client: target._id });
-					removedFromTarget = del.deletedCount || 0;
-				}
-				const have = new Set((mode === 'tr_overwrite' ? [] : targetWls).map(w => String(w.product)));
-				for (const w of sourceWls) {
-					if (have.has(String(w.product))) {
-						await Whitelist.deleteOne({ _id: w._id }); // target already owns it
-						skipped++;
-					} else {
-						await Whitelist.updateOne({ _id: w._id }, { $set: { client: target._id } });
-						have.add(String(w.product));
-						moved++;
-					}
-				}
-				// Discord follows to the new account
-				if (source.discord) {
-					if (!target.discord) {
-						await Client.updateOne({ _id: source._id }, { $unset: { discord: 1 } });
-						await Client.updateOne({ _id: target._id }, { $set: { discord: source.discord } });
-						discordNote = `Discord <@${source.discord}> moved to ${toLine}.`;
-					} else if (target.discord === source.discord) {
-						discordNote = `Discord <@${source.discord}> was already on the new account.`;
-					} else {
-						discordNote = `⚠️ The new account was already linked to <@${target.discord}> — left that in place. The customer's Discord <@${source.discord}> is still on the old account; reassign manually if needed.`;
-					}
-				}
+			const result = operation.result || {};
+			const moved = Number(result.moved) || 0;
+			const skipped = Number(result.skipped) || 0;
+			const removedFromTarget = Number(result.removedFromTarget) || 0;
+			let discordNote = "";
+			if (source.discord && result.discord === "retargeted") discordNote = `Discord <@${source.discord}> is now linked to ${toLine}.`;
+			if (source.discord && result.discord === "moved") discordNote = `Discord <@${source.discord}> moved to ${toLine}.`;
+			if (source.discord && result.discord === "target_conflict") {
+				discordNote = `⚠️ The new account already has a different Discord link, so <@${source.discord}> remains on the old profile. No product entitlement was lost.`;
 			}
 
 			let out = `✅ Moved **${moved}** product(s) to ${toLine}.`;
@@ -189,7 +170,10 @@ module.exports = {
 			return interaction.editReply({ embeds: [embed("Transfer complete", out)], components: [] });
 		} catch (e) {
 			console.log("[transfer] error:", e);
-			return interaction.editReply({ embeds: [embed("Transfer — error", "Something went wrong mid-transfer. Changes may be partial — check both accounts before retrying.")], components: [] });
+			if (e.transferOperationId) {
+				return interaction.editReply({ embeds: [embed("Transfer — safely queued", "The transfer did not finish immediately, but it was journaled before any destructive step. Destination entitlements are always copied and verified before source entitlements are removed, and the bot will retry an interrupted transfer automatically. Check the accounts after one minute before submitting a different transfer.")], components: [] });
+			}
+			return interaction.editReply({ embeds: [embed("Transfer — not started", "The transfer could not be journaled, so no transfer changes were made. Check the source and destination accounts, then retry.")], components: [] });
 		}
 	}
 };

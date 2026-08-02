@@ -29,6 +29,9 @@ module.exports = {
 	 * @param {Interaction} interaction
 	 */
 	run: async (interaction) => {
+		if (process.env.ASSET_PERMISSION_GRANTS_ENABLED !== "true") {
+			return interaction.editReply({ embeds: [embed("Asset grants retired", "Product licensing no longer modifies Roblox experience asset permissions. This does not affect product ownership or whitelist verification.")] });
+		}
 		const input = interaction.options.getString('experience');
 
 		// 1) caller must be linked (verified Roblox identity)

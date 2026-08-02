@@ -4,7 +4,8 @@
   "description": "estore provides services where users can sell their creations.",
   "main": "src/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Set TRANSFER_TEST_DB_URI and run npm run test:transfer\"",
+    "test:transfer": "node test/transferService.integration.js"
   },
   "repository": {
     "type": "git",

@@ -21,7 +21,7 @@ module.exports = wrapAsync(async (req, res) => {
 
     console.log(`checking ip: ${ip}`);
 
-    const place = String(req.headers["roblox-id"]) ? String(req.headers["roblox-id"]) : "0";
+    const place = String(req.headers["roblox-id"] || "0");
     
     let productId = await req.headers["x-uid"];
     if (!productId) {
@@ -60,7 +60,7 @@ module.exports = wrapAsync(async (req, res) => {
     }
     
     // compare purchase owner to place owner
-    if (req.headers["x-pid"].toString() !== place) {
+    if (String(req.headers["x-pid"] || "") !== place) {
         return res.status(200).json({ status: 200, message: "Invalid whitelist", owns: false });
     }
 

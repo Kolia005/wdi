@@ -56,4 +56,5 @@ Client.virtual("groupstaff", {
     foreignField: "group"
 });
 
-module.exports = mongoose.model("Client", Client);
+const testPrefix = process.env.TRANSFER_TEST_COLLECTION_PREFIX;
+module.exports = mongoose.model("Client", Client, testPrefix ? `${testPrefix}_clients` : undefined);

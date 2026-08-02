@@ -22,4 +22,9 @@ const schema = new mongoose.Schema({
 
 schema.set("toJSON", { virtuals: true });
 
-module.exports = mongoose.model("Whitelist", schema);
+// A customer can own a product only once. This makes Wix retries, Discord
+// retries, and crash-resumed transfers idempotent at the database layer.
+schema.index({ client: 1, product: 1 }, { unique: true });
+
+const testPrefix = process.env.TRANSFER_TEST_COLLECTION_PREFIX;
+module.exports = mongoose.model("Whitelist", schema, testPrefix ? `${testPrefix}_whitelists` : undefined);

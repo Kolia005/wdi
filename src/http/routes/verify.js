@@ -63,11 +63,17 @@ module.exports = wrapAsync(async (req, res) => {
         nonce,
     };
 
-    // Auto-grant the entitled meshes/audio to this universe (fire-and-forget, deduped internally):
-    // a licensed game gets its Restricted assets granted on its first /verify, no manual step.
-    if (!killed && universeId && packs.length) {
-        require("../util/autograntUniverse.js").autoGrantUniverse(String(universeId), packs);
-    }
+    // Licensing is intentionally read-only. Asset distribution/permissions are
+    // independent from /verify, so a license check never mutates a customer's
+    // universe or calls Roblox's asset-permission API.
+    res.locals.licenseVerification = {
+        universeId: universeId ? String(universeId) : "",
+        ownerId: ownerId ? String(ownerId) : "",
+        product: products.join(","),
+        licensed: !!lic,
+        killed: !!killed,
+        reason: killed ? "Remote kill" : (lic ? "Authorized" : "Not entitled"),
+    };
 
     // A licensing/kill endpoint must NEVER be cached (Cloudflare edge or Roblox HttpService),
     // or a game gets stale entitlement/kill state.

@@ -5,6 +5,7 @@ const path = require("path");
 const fs = require("fs");
 const messaging = require("./messaging.js");
 const grantSync = require("./grantSync.js");
+const transferService = require("./transferService.js");
 
 // Global safety nets: a single stray promise rejection / thrown error must NEVER take
 // the whole bot down (on Node 16 an unhandled rejection crashes the process by default,
@@ -114,7 +115,11 @@ client.once("ready", () => {
     messaging.setClient(client);
     messaging.bindGuild();
     grantSync.setClient(client);
-    grantSync.start();
+    // Restricted-asset auto-granting is retired. Visual assets are distributed
+    // independently of license verification, so /verify no longer mutates
+    // customer experience permissions.
+    if (process.env.ASSET_PERMISSION_GRANTS_ENABLED === "true") grantSync.start();
+    transferService.startRecovery();
 
     client.user.setActivity(
         "for purchases",

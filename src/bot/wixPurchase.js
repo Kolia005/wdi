@@ -152,15 +152,19 @@ async function processWixPurchase({ wixOrderId, wixProductId, wixProduct, roblox
 	// 4. grant whitelist for EVERY product in the bundle (idempotent)
 	let grantedAny = false;
 	for (const product of products) {
-		const existing = await Whitelist.findOne({ client: client._id, product: product._id });
-		if (!existing) {
-			await Whitelist.create({ client: client._id, product: product._id, created: new Date() });
-			grantedAny = true;
-		}
+		const grant = await Whitelist.updateOne(
+			{ client: client._id, product: product._id },
+			{ $setOnInsert: { client: client._id, product: product._id, created: new Date() } },
+			{ upsert: true }
+		);
+		if (grant.upsertedCount > 0) grantedAny = true;
 	}
 	if (grantedAny) {
-		// top up their whitelisted experiences with the new products' assets (fire-and-forget, once)
-		require("./grantSync.js").afterWhitelistChange(client._id, "wix purchase");
+		// Asset distribution is independent from licensing. Do not mutate a
+		// customer's Roblox universe as a side effect of a Wix purchase.
+		if (process.env.ASSET_PERMISSION_GRANTS_ENABLED === "true") {
+			require("./grantSync.js").afterWhitelistChange(client._id, "wix purchase");
+		}
 	}
 
 	// 5. file delivery — one always-fresh tokenized link per product that has a file

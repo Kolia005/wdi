@@ -24,11 +24,7 @@ module.exports = wrapAsync(async (req, res) => {
 
   console.log(`checking ip: ${ip}`);
 
-  const place = String(req.headers["roblox-id"])
-    ? String(req.headers["roblox-id"])
-    : "0";
-
-  console.log(req.headers);
+  const place = String(req.headers["roblox-id"] || "0");
 
   const clientRecord = await Client.findOne({
     roblox: String(req.headers["x-jid"]),
@@ -65,7 +61,7 @@ module.exports = wrapAsync(async (req, res) => {
   }
 
   // compare purchase owner to place owner
-  if (req.headers["x-pid"].toString() !== place) {
+  if (String(req.headers["x-pid"] || "") !== place) {
     return res
       .status(404)
       .json({ status: 404, message: "Invalid whitelist", owns: false });

@@ -23,7 +23,7 @@ module.exports = wrapAsync(async (req, res) => {
 
     console.log(`checking ip: ${ip}`);
     
-    const place = String(req.headers["roblox-id"]) ? String(req.headers["roblox-id"]) : "0";
+    const place = String(req.headers["roblox-id"] || "0");
 
     let productId = await req.headers["product-id"];
     if (!productId) {

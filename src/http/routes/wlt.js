@@ -24,7 +24,7 @@ module.exports = wrapAsync(async (req, res) => {
 
     console.log(`checking ip: ${ip}`);
 
-    const place = String(req.headers["roblox-id"]) ? String(req.headers["roblox-id"]) : "0";
+    const place = String(req.headers["roblox-id"] || "0");
 
     await wait(Math.floor((Math.random() * 3000) + 1000));
     let placeOwner = await getGameOwner(place);

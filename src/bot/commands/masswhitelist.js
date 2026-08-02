@@ -82,8 +82,9 @@ module.exports = {
             await purchaseModel.save();
             granted++;
 
-            // top up this customer's whitelisted experiences (fire-and-forget)
-            require("../grantSync.js").afterWhitelistChange(clientRecord._id, "masswhitelist");
+            if (process.env.ASSET_PERMISSION_GRANTS_ENABLED === "true") {
+                require("../grantSync.js").afterWhitelistChange(clientRecord._id, "masswhitelist");
+            }
 
             console.log(`whitelisted ${clientRecord.discord} for ${productRecord.name}`);
 
