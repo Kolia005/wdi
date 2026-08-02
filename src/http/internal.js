@@ -96,6 +96,7 @@ router.post("/unkill", async (req, res) => {
 
 // --- Pack enforcement level (dashboard-controlled remote toggle). full | entitlement | off ---
 const Setting = require("../model/Setting.js");
+const { getVehiclePackPolicy, setVehiclePackPolicy } = require("./util/vehiclePackPolicy.js");
 
 router.get("/enforce", async (_req, res) => {
 	try {
@@ -117,6 +118,26 @@ router.post("/enforce", async (req, res) => {
 		await Setting.updateOne({ key: "packEnforcement" }, { $set: { value: map, updated: new Date() } }, { upsert: true });
 		res.json({ ok: true, enforcement: map });
 	} catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// --- Vehicle-to-pack policy (signed into /verify). planned | entitlement | full | off ---
+router.get("/vehicle-pack-policy", async (_req, res) => {
+	try {
+		res.json({ ok: true, policy: await getVehiclePackPolicy() });
+	} catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// body: { vehicle, pack, mode: "planned"|"entitlement"|"full"|"off" }
+// planned records a future assignment without restricting the vehicle. off removes the assignment.
+router.post("/vehicle-pack-policy", async (req, res) => {
+	const { vehicle, pack, mode } = req.body || {};
+	if (!vehicle || !["planned", "entitlement", "full", "off"].includes(mode)) {
+		return res.status(400).json({ ok: false, error: "vehicle + mode (planned|entitlement|full|off) required" });
+	}
+	try {
+		const policy = await setVehiclePackPolicy(vehicle, pack, mode);
+		res.json({ ok: true, policy });
+	} catch (e) { res.status(400).json({ ok: false, error: e.message }); }
 });
 
 // --- Admin signer: sign a rig fingerprint for the initial pack manifest. body: { digest, pack, ver? } ---

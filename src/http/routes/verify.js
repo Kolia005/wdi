@@ -1,7 +1,7 @@
 // Signed license-verification endpoint for the in-game whitelist gate.
 //   GET /verify?place=<placeId>&universe=<universeId>[&product=<name>][&nonce=<n>]
 // Returns an Ed25519-SIGNED assertion bound to the universe:
-//   { u, p, prod, lic, packs, killed, enf, iat, nonce }
+//   { u, p, prod, lic, packs, killed, enf, vpack, iat, nonce }
 //   - packs  = the owner's FULL entitlement (every product/pack they own) -> the in-game gate does
 //              pack checks (AVCS, US_Pack, ...) as LOCAL lookups, so ONE ping covers all.
 //   - killed = remote-kill flag (dashboard); when set, lic=false, packs=[] -> game shuts down.
@@ -12,6 +12,7 @@ const signer = require("../util/signer.js");
 const { resolveOwner, fullEntitlement, universeGrants } = require("../util/roblox.js");
 const KillList = require("../../model/KillList.js");
 const Setting = require("../../model/Setting.js");
+const { getVehiclePackPolicy } = require("../util/vehiclePackPolicy.js");
 const wrapAsync = require("../util/wrapAsync.js");
 
 async function isKilled(universeId, place, ownerId) {
@@ -43,11 +44,14 @@ module.exports = wrapAsync(async (req, res) => {
     const { universeId, ownerId } = await resolveOwner(place, universe);
     // entitlement = what the resolved owner owns, UNION explicit per-universe grants (covers private /
     // unresolvable games whose owner API returns id 0 / "[UNKNOWN]"). Never derived from owner "0".
-    const ownerPacks = await fullEntitlement(ownerId);
-    const uniPacks = await universeGrants(universeId);
+    const [ownerPacks, uniPacks, killed, enf, vpack] = await Promise.all([
+        fullEntitlement(ownerId),
+        universeGrants(universeId),
+        isKilled(universeId, place, ownerId),
+        enforcementMap(),
+        getVehiclePackPolicy(),
+    ]);
     const packs = [...new Set([...ownerPacks, ...uniPacks])];
-    const killed = await isKilled(universeId, place, ownerId);
-    const enf = await enforcementMap();
 
     const lic = !killed && (products.length ? products.every(p => packs.includes(p)) : packs.length > 0);
 
@@ -59,6 +63,7 @@ module.exports = wrapAsync(async (req, res) => {
         packs: killed ? [] : packs,
         killed: !!killed,
         enf,                       // per-pack enforcement overrides (global, signed)
+        vpack,                     // remotely managed vehicle -> pack policy (global, signed)
         iat: Math.floor(Date.now() / 1000),
         nonce,
     };
