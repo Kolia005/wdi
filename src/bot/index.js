@@ -1,21 +1,19 @@
-const { Client, GatewayIntentBits, PermissionsBitField, Partials, Collection, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
-const { Routes } = require('discord-api-types/v9');
-const { REST } = require('@discordjs/rest');
+const {
+    ActivityType,
+    Client,
+    Collection,
+    Events,
+    GatewayIntentBits,
+    Partials,
+    REST,
+    Routes,
+} = require("discord.js");
 const path = require("path");
 const fs = require("fs");
 const messaging = require("./messaging.js");
 const grantSync = require("./grantSync.js");
 const transferService = require("./transferService.js");
-
-// Global safety nets: a single stray promise rejection / thrown error must NEVER take
-// the whole bot down (on Node 16 an unhandled rejection crashes the process by default,
-// which would kill everyone's in-flight interactions -> "interaction failed").
-process.on("unhandledRejection", (reason) => {
-    console.log("[unhandledRejection]", (reason && reason.stack) ? reason.stack : reason);
-});
-process.on("uncaughtException", (err) => {
-    console.log("[uncaughtException]", (err && err.stack) ? err.stack : err);
-});
+const health = require("./health.js");
 
 const client = new Client({
     intents: [
@@ -24,11 +22,9 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.GuildMessageTyping,
         GatewayIntentBits.GuildMessageReactions,
-
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.DirectMessageTyping,
         GatewayIntentBits.DirectMessageReactions,
-
         GatewayIntentBits.MessageContent,
     ],
     partials: [
@@ -37,104 +33,106 @@ const client = new Client({
         Partials.User,
         Partials.GuildMember,
         Partials.Reaction,
-    ]
+    ],
 });
+
 client.commands = new Collection();
+health.attach(client);
 
-/**
- * @description Loads all available commands
- */
 function loadCommands() {
-    const commandsPath = path.join(__dirname, 'commands');
-    const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+    const commandsPath = path.join(__dirname, "commands");
+    const commandFiles = fs.readdirSync(commandsPath).filter((file) => file.endsWith(".js"));
 
     for (const file of commandFiles) {
-        try {
-            const filePath = path.join(commandsPath, file);
-            const command = require(filePath);
-            client.commands.set(command.data.name, command);
-            console.log(`Loaded command '${command.data.name}.js'`);
-        } catch (err) {
-            console.log(err);
+        const filePath = path.join(commandsPath, file);
+        const command = require(filePath);
+        if (!command.data || typeof command.run !== "function") {
+            throw new Error(`Invalid command module: ${file}`);
         }
+        client.commands.set(command.data.name, command);
+        console.log(`Loaded command '${command.data.name}.js'`);
     }
 }
 
-/**
- * @description Loads all slash commands
- */
-function deployCommands() {
-    const commands = [];
-    const commandsPath = path.join(__dirname, 'commands');
-    const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-
-    for (const file of commandFiles) {
-        const slashCommand = path.join(commandsPath, file);
-        const command = require(slashCommand);
-        commands.push(command.data.toJSON());
-    }
-
-    const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
-
-    rest.put(Routes.applicationGuildCommands(client.user.id, process.env.GUILD), { body: commands }).then(() => {
-        console.log('Successfully registered application commands.')
-    }).catch((err) => {
-        console.log(err)
-    });
-}
-
-/**
- * @description Loads event scripts
- */
 function loadEvents() {
-    var startupFolder = path.join(__dirname, "events");
-    fs.readdir(startupFolder, (err, files) => {
-        if (err) {
-            console.log("Unable to read event folder")
-            botErrorLog("Read Error", err.message);
-        } else {
-            files.forEach((file) => {
-                if (file.length >= 4) {
-                    if (file.substring(file.length - 3) === ".js") {
-                        try {
-                            let module = require(path.resolve(`${__dirname}/events/${file}`))(client);
-                            console.log(`Loaded event '${file}'`)
-                        } catch (e) {
-                            console.log(e)
-                            console.log(`Unbale to load event '${file}'`);
-                        }
-                    }
-                }
-            });
-        }
-    });
+    const eventsPath = path.join(__dirname, "events");
+    const eventFiles = fs.readdirSync(eventsPath).filter((file) => file.endsWith(".js"));
+
+    for (const file of eventFiles) {
+        require(path.join(eventsPath, file))(client);
+        console.log(`Loaded event '${file}'`);
+    }
 }
 
-client.once("ready", () => {
-    console.log("Connected to Discord");
+async function deployCommands() {
+    const commands = client.commands.map((command) => command.data.toJSON());
+    const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
+    await rest.put(
+        Routes.applicationGuildCommands(client.user.id, process.env.GUILD),
+        { body: commands },
+    );
+    console.log("Successfully registered application commands.");
+}
+
+client.once(Events.ClientReady, async (readyClient) => {
+    health.markReady();
+    console.log(`Connected to Discord as ${readyClient.user.tag}`);
+
     messaging.setClient(client);
-    messaging.bindGuild();
+    await messaging.bindGuild();
     grantSync.setClient(client);
-    // Restricted-asset auto-granting is retired. Visual assets are distributed
-    // independently of license verification, so /verify no longer mutates
-    // customer experience permissions.
     if (process.env.ASSET_PERMISSION_GRANTS_ENABLED === "true") grantSync.start();
     transferService.startRecovery();
 
-    client.user.setActivity(
-        "for purchases",
-        {
-            type: "WATCHING",
-        }
-    )
+    readyClient.user.setActivity("for purchases", { type: ActivityType.Watching });
+    await deployCommands();
 });
 
-module.exports = () => {
-    client.login(process.env.TOKEN).then(() => {
-        deployCommands();
-        loadCommands();
-        loadEvents();
-    }).catch((err) => {
-        console.log(err)
+client.on(Events.ShardDisconnect, (event, shardId) => {
+    health.markDisconnected(`Shard ${shardId} disconnected with code ${event.code}`);
+    console.warn(`[discord] shard ${shardId} disconnected (code ${event.code})`);
+});
+client.on(Events.ShardReconnecting, (shardId) => {
+    health.markDisconnected(`Shard ${shardId} reconnecting`);
+    console.warn(`[discord] shard ${shardId} reconnecting`);
+});
+client.on(Events.ShardResume, (shardId, replayedEvents) => {
+    health.markReady();
+    console.log(`[discord] shard ${shardId} resumed (${replayedEvents} replayed events)`);
+});
+client.on(Events.ShardReady, (shardId) => {
+    health.markReady();
+    console.log(`[discord] shard ${shardId} ready`);
+});
+client.on(Events.Error, (error) => console.error("[discord:error]", error));
+client.on(Events.Warn, (warning) => console.warn("[discord:warn]", warning));
+client.on(Events.Invalidated, () => {
+    throw new Error("Discord session invalidated");
+});
+
+async function start() {
+    if (!process.env.TOKEN) throw new Error("TOKEN is required");
+    if (!process.env.GUILD) throw new Error("GUILD is required");
+
+    loadCommands();
+    loadEvents();
+    health.startWatchdog((state) => {
+        console.error("[discord] gateway remained unhealthy past the grace period", state);
+        process.exit(1);
     });
+
+    await client.login(process.env.TOKEN);
+}
+
+async function stop() {
+    health.stopWatchdog();
+    if (typeof messaging.stop === "function") messaging.stop();
+    if (typeof grantSync.stop === "function") grantSync.stop();
+    client.destroy();
+}
+
+module.exports = {
+    getHealth: health.snapshot,
+    start,
+    stop,
 };

@@ -22,6 +22,10 @@ router.post("/sync-membership", async (_req, res) => {
 	res.status(r.ok ? 200 : 500).json(r);
 });
 
+router.get("/broadcast-active", (_req, res) => {
+	res.json({ ok: true, broadcasts: messaging.getActiveBroadcasts() });
+});
+
 // Preview: how many owners are reachable for a product (no sends)
 router.get("/broadcast-preview", async (req, res) => {
 	try {
@@ -49,7 +53,8 @@ router.post("/broadcast", async (req, res) => {
 	const { productId, message, testDiscordId } = req.body || {};
 	if (!productId || !message) return res.status(400).json({ ok: false, error: "productId and message required" });
 	const r = await messaging.broadcastToProduct(productId, message, { testDiscordId });
-	res.status(r.ok ? 200 : 400).json(r);
+	const status = r.ok ? 200 : r.code === "BROADCAST_ACTIVE" ? 409 : r.code === "BOT_NOT_READY" ? 503 : 400;
+	res.status(status).json(r);
 });
 
 // --- Remote kill list (dashboard-controlled). Matches make /verify return signed killed:true. ---

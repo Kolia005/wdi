@@ -1,127 +1,177 @@
-// WDI messaging + membership module. Runs INSIDE the bot process (shares the Discord client).
-// - Periodically syncs which linked Discord users are still in the guild (inServer flag on Client).
-// - Exposes broadcastToProduct(): DM every owner of a product, throttled, recording results.
+// WDI messaging + membership module. Runs inside the bot process and shares its Discord client.
 const mongoose = require("mongoose");
 
 const Client = require("../model/Client.js");
 const Product = require("../model/Product.js");
 const Whitelist = require("../model/Whitelist.js");
 
-// Broadcast history collection (created lazily)
 const broadcastSchema = new mongoose.Schema({
-	product: String,
-	productId: mongoose.Schema.Types.ObjectId,
-	message: String,
-	total: Number,
-	sent: Number,
-	failed: Number,
-	notInServer: Number,
-	results: [{ discord: String, roblox: String, status: String }], // status: sent | failed | not_in_server
-	at: { type: Date, default: Date.now }
+    product: String,
+    productId: mongoose.Schema.Types.ObjectId,
+    message: String,
+    total: Number,
+    sent: Number,
+    failed: Number,
+    notInServer: Number,
+    results: [{ discord: String, roblox: String, status: String }],
+    at: { type: Date, default: Date.now },
 });
 const Broadcast = mongoose.models.Broadcast || mongoose.model("Broadcast", broadcastSchema);
 
 let discordClient = null;
 let guild = null;
+let membershipTimer = null;
+const activeBroadcasts = new Map();
 
-function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+function botReady() {
+    return Boolean(discordClient && typeof discordClient.isReady === "function" && discordClient.isReady());
+}
 
-/**
- * Refresh the set of guild members and update Client.inServer for every linked client.
- */
 async function syncMembership() {
-	if (!discordClient || !guild) return { ok: false, error: "bot not ready" };
-	try {
-		const members = await guild.members.fetch(); // full member list
-		const present = new Set(members.map((m) => m.user.id));
-		const clients = await Client.find({}, { discord: 1 }).lean();
-		let inCount = 0, outCount = 0;
-		const now = new Date();
-		const inIds = [];
-		const outIds = [];
-		for (const c of clients) {
-			if (present.has(String(c.discord))) { inCount++; inIds.push(c._id); }
-			else { outCount++; outIds.push(c._id); }
-		}
-		// two bulk updateMany calls — simplest & version-safe
-		if (inIds.length) await Client.updateMany({ _id: { $in: inIds } }, { $set: { inServer: true, membershipChecked: now } });
-		if (outIds.length) await Client.updateMany({ _id: { $in: outIds } }, { $set: { inServer: false, membershipChecked: now } });
-		console.log(`[membership] synced: ${inCount} in server, ${outCount} left/unknown`);
-		return { ok: true, inServer: inCount, notInServer: outCount, total: clients.length };
-	} catch (e) {
-		console.log("[membership] sync error:", e.message);
-		return { ok: false, error: e.message };
-	}
+    if (!botReady() || !guild) return { ok: false, error: "bot not ready", code: "BOT_NOT_READY" };
+    try {
+        const members = await guild.members.fetch();
+        const present = new Set(members.map((member) => member.user.id));
+        const clients = await Client.find({}, { discord: 1 }).lean();
+        let inCount = 0;
+        let outCount = 0;
+        const now = new Date();
+        const inIds = [];
+        const outIds = [];
+
+        for (const client of clients) {
+            if (present.has(String(client.discord))) {
+                inCount++;
+                inIds.push(client._id);
+            } else {
+                outCount++;
+                outIds.push(client._id);
+            }
+        }
+
+        if (inIds.length) await Client.updateMany({ _id: { $in: inIds } }, { $set: { inServer: true, membershipChecked: now } });
+        if (outIds.length) await Client.updateMany({ _id: { $in: outIds } }, { $set: { inServer: false, membershipChecked: now } });
+        console.log(`[membership] synced: ${inCount} in server, ${outCount} left/unknown`);
+        return { ok: true, inServer: inCount, notInServer: outCount, total: clients.length };
+    } catch (error) {
+        console.error("[membership] sync error:", error);
+        return { ok: false, error: error.message };
+    }
 }
 
-/**
- * DM all owners of a product. Throttled. Records a Broadcast doc.
- * @param {string} productId
- * @param {string} message
- * @param {object} opts { testDiscordId }  if set, only DM that one user (test send)
- */
 async function broadcastToProduct(productId, message, opts = {}) {
-	if (!discordClient) return { ok: false, error: "bot not ready" };
-	const product = await Product.findById(productId);
-	if (!product) return { ok: false, error: "product not found" };
+    if (!botReady()) return { ok: false, error: "bot not ready", code: "BOT_NOT_READY" };
 
-	// Resolve owners (client docs) of this product
-	const purchases = await Whitelist.find({ product: product._id }).populate("client").lean();
-	let owners = purchases.map((p) => p.client).filter(Boolean);
+    const lockKey = String(productId);
+    const isFullBroadcast = !opts.testDiscordId;
+    if (isFullBroadcast && activeBroadcasts.has(lockKey)) {
+        return {
+            ok: false,
+            error: "a broadcast for this product is already running",
+            code: "BROADCAST_ACTIVE",
+            active: activeBroadcasts.get(lockKey),
+        };
+    }
 
-	// Test mode: single recipient
-	if (opts.testDiscordId) {
-		owners = owners.filter((o) => String(o.discord) === String(opts.testDiscordId));
-		if (!owners.length) return { ok: false, error: "that user does not own this product" };
-	}
+    const progress = {
+        productId: lockKey,
+        startedAt: new Date().toISOString(),
+        sent: 0,
+        failed: 0,
+        notInServer: 0,
+        total: null,
+    };
+    if (isFullBroadcast) activeBroadcasts.set(lockKey, progress);
 
-	const results = [];
-	let sent = 0, failed = 0, notInServer = 0;
+    try {
+        const product = await Product.findById(productId);
+        if (!product) return { ok: false, error: "product not found", code: "PRODUCT_NOT_FOUND" };
 
-	for (const o of owners) {
-		const discordId = String(o.discord);
-		try {
-			// fetch user; DM only works if a mutual guild exists
-			const user = await discordClient.users.fetch(discordId);
-			await user.send(message);
-			results.push({ discord: discordId, roblox: o.roblox, status: "sent" });
-			sent++;
-		} catch (e) {
-			// 50007 = cannot send messages to this user (left server / DMs closed / blocked bot)
-			const code = e?.code;
-			const status = code === 50007 ? "not_in_server" : "failed";
-			if (status === "not_in_server") notInServer++; else failed++;
-			results.push({ discord: discordId, roblox: o.roblox, status });
-		}
-		await sleep(1200); // throttle ~0.8/sec to stay well under Discord limits
-	}
+        const purchases = await Whitelist.find({ product: product._id }).populate("client").lean();
+        let owners = purchases.map((purchase) => purchase.client).filter(Boolean);
 
-	const doc = await Broadcast.create({
-		product: product.name,
-		productId: product._id,
-		message,
-		total: owners.length,
-		sent, failed, notInServer,
-		results,
-		at: new Date()
-	});
+        if (opts.testDiscordId) {
+            owners = owners.filter((owner) => String(owner.discord) === String(opts.testDiscordId));
+            if (!owners.length) return { ok: false, error: "that user does not own this product", code: "NOT_AN_OWNER" };
+        }
 
-	return { ok: true, total: owners.length, sent, failed, notInServer, broadcastId: String(doc._id) };
+        progress.product = product.name;
+        progress.total = owners.length;
+        const results = [];
+
+        for (const owner of owners) {
+            const discordId = String(owner.discord);
+            try {
+                const user = await discordClient.users.fetch(discordId);
+                await user.send(message);
+                results.push({ discord: discordId, roblox: owner.roblox, status: "sent" });
+                progress.sent++;
+            } catch (error) {
+                const status = error && error.code === 50007 ? "not_in_server" : "failed";
+                progress[status === "not_in_server" ? "notInServer" : "failed"]++;
+                results.push({ discord: discordId, roblox: owner.roblox, status });
+            }
+            await sleep(1200);
+        }
+
+        const doc = await Broadcast.create({
+            product: product.name,
+            productId: product._id,
+            message,
+            total: owners.length,
+            sent: progress.sent,
+            failed: progress.failed,
+            notInServer: progress.notInServer,
+            results,
+            at: new Date(),
+        });
+
+        return {
+            ok: true,
+            total: owners.length,
+            sent: progress.sent,
+            failed: progress.failed,
+            notInServer: progress.notInServer,
+            broadcastId: String(doc._id),
+        };
+    } finally {
+        if (isFullBroadcast) activeBroadcasts.delete(lockKey);
+    }
 }
 
-function setClient(c) {
-	discordClient = c;
+function getActiveBroadcasts() {
+    return Array.from(activeBroadcasts.values()).map((item) => ({ ...item }));
 }
+
+function setClient(client) {
+    discordClient = client;
+}
+
 async function bindGuild() {
-	if (!discordClient) return;
-	try {
-		guild = await discordClient.guilds.fetch(process.env.GUILD);
-		await syncMembership(); // initial sync
-		// re-sync every 3 hours
-		setInterval(syncMembership, 3 * 60 * 60 * 1000);
-	} catch (e) {
-		console.log("[membership] could not bind guild:", e.message);
-	}
+    if (!botReady()) throw new Error("Discord client is not ready");
+    guild = await discordClient.guilds.fetch(process.env.GUILD);
+    await syncMembership();
+    if (membershipTimer) clearInterval(membershipTimer);
+    membershipTimer = setInterval(() => {
+        syncMembership().catch((error) => console.error("[membership] scheduled sync failed:", error));
+    }, 3 * 60 * 60 * 1000);
+    membershipTimer.unref();
 }
 
-module.exports = { setClient, bindGuild, syncMembership, broadcastToProduct, Broadcast };
+function stop() {
+    if (membershipTimer) clearInterval(membershipTimer);
+    membershipTimer = null;
+    guild = null;
+    discordClient = null;
+}
+
+module.exports = {
+    Broadcast,
+    bindGuild,
+    broadcastToProduct,
+    getActiveBroadcasts,
+    setClient,
+    stop,
+    syncMembership,
+};

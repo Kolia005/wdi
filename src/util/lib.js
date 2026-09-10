@@ -1,5 +1,13 @@
 const axios = require("axios");
-const btoa = require("btoa");
+
+const MAX_FILE_BYTES = 100 * 1024 * 1024;
+
+function encodeFile(file) {
+    if (Buffer.isBuffer(file)) return file.toString("base64");
+    if (file instanceof ArrayBuffer) return Buffer.from(file).toString("base64");
+    if (ArrayBuffer.isView(file)) return Buffer.from(file.buffer, file.byteOffset, file.byteLength).toString("base64");
+    throw new TypeError("Product file must be binary data");
+}
 
 const processFile = async (file, uniqueId) => {
     const response = await axios({
@@ -8,11 +16,12 @@ const processFile = async (file, uniqueId) => {
 
         data: {
             uId: uniqueId,
-            file: btoa(file)
+            file: encodeFile(file)
         },
 
-        maxContentLength: 10000000000000,
-        maxBodyLength: 100000000000000
+        timeout: 120000,
+        maxContentLength: MAX_FILE_BYTES,
+        maxBodyLength: MAX_FILE_BYTES * 2
     });
 
     return response.data;
@@ -29,11 +38,12 @@ const getScript = async (fileId, placeId, jobId) => {
             jobId
         },
 
-        maxContentLength: 10000000000000,
-        maxBodyLength: 100000000000000
+        timeout: 30000,
+        maxContentLength: 10 * 1024 * 1024,
+        maxBodyLength: 1024 * 1024
     });
 
     return response.data;
 }
 
-module.exports = { processFile, getScript }
+module.exports = { encodeFile, processFile, getScript }

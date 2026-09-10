@@ -49,25 +49,15 @@ module.exports = {
      * @param {Interaction} interaction 
      */
     run: async (interaction) => {
-        switch (interaction.options._subcommand) {
-            case "grant":
-                require("../subcommands/products/grant")(interaction);
-                break;
-            case "revoke":
-                require("../subcommands/products/revoke")(interaction);
-                break;
+        switch (interaction.options.getSubcommand()) {
             case "create":
-                require("../subcommands/products/create")(interaction);
-                break;
+                return require("../subcommands/products/create")(interaction);
             case "delete":
-                require("../subcommands/products/delete")(interaction);
-                break;
-            case "transfer":
-                require("../subcommands/products/transfer")(interaction);
-                break;
+                return require("../subcommands/products/delete")(interaction);
             case "update":
-                require("../subcommands/products/update")(interaction);
-                break;
+                return require("../subcommands/products/update")(interaction);
+            default:
+                throw new Error("Unsupported product subcommand");
         }
     },
 };

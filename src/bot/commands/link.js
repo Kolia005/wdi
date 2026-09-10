@@ -2,7 +2,7 @@ const {
 	SlashCommandBuilder,
 	Interaction,
 	ActionRowBuilder,
-	SelectMenuBuilder,
+	StringSelectMenuBuilder,
 	EmbedBuilder,
 } = require("discord.js");
 const axios = require("axios");
@@ -170,7 +170,7 @@ module.exports = {
 			embeds: [embed("Method", "Please select a method to link your Roblox account")],
 			components: [
 				new ActionRowBuilder().addComponents(
-					new SelectMenuBuilder()
+					new StringSelectMenuBuilder()
 						.setCustomId(SELECT_ID)
 						.setPlaceholder("Click to select a verification method")
 						.addOptions([

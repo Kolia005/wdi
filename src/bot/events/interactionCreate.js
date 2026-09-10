@@ -14,7 +14,7 @@ module.exports = exports = (client) => {
 
         // --- Component interactions: handled persistently (survive bot restarts,
         //     unlike the old in-memory awaitMessageComponent collectors) ---
-        if (interaction.isSelectMenu && interaction.isSelectMenu()) {
+        if (interaction.isAnySelectMenu()) {
             try {
                 const link = client.commands.get("link");
                 if (link && typeof link.handleVerifyMethod === "function" && interaction.customId === link.selectId) {
@@ -32,27 +32,20 @@ module.exports = exports = (client) => {
         if (!command) return;
 
         try {
-            interaction.deferReply().then(async () => {
-                try {
-                    await command.run(interaction);
-                } catch (e) {
-                    console.log(`Error in command ${interaction.commandName} (or middleware): ${e}`);
-                    try {
-                        await interaction.editReply({ embeds: [errEmbed(`An error occurred executing the \`${interaction.commandName}\` command. Please try again later.`)], ephemeral: true });
-                    } catch (err) {
-                        try {
-                            await interaction.channel.send({ embeds: [errEmbed(`An error occurred executing the \`${interaction.commandName}\` command. Please try again later.`)] });
-                        } catch (_) { /* channel gone — give up quietly */ }
-                    }
-                }
-            }).catch((e) => {
-                console.log(`Could not defer ${interaction.commandName}: ${e}`);
-            });
+            await interaction.deferReply();
+            await command.run(interaction);
         } catch (err) {
-            console.log(err);
+            console.error(`[interaction] ${interaction.commandName} failed:`, err);
             try {
-                await interaction.channel.send({ embeds: [errEmbed(`Unknown Command - ID: \`${interaction.commandId}\``)] });
-            } catch (_) { /* ignore */ }
+                const payload = {
+                    embeds: [errEmbed(`An error occurred executing the \`${interaction.commandName}\` command. Please try again later.`)],
+                    ephemeral: true,
+                };
+                if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
+                else await interaction.reply(payload);
+            } catch (replyError) {
+                console.error(`[interaction] unable to report ${interaction.commandName} failure:`, replyError);
+            }
         }
     });
 };

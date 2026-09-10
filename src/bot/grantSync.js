@@ -18,6 +18,8 @@ const { resolveExperience, getGroupOwnerId, entitledAssetIds, grantUniversePermi
 
 let discordClient = null;
 function setClient(c) { discordClient = c; }
+let bootTimer = null;
+let cronTimer = null;
 
 const AUDIO_KEY = "globalAudioAssetIds";
 
@@ -215,13 +217,23 @@ function afterWhitelistChange(clientId, reason) {
 function start() {
 	// initial pass shortly after boot (covers panel-made grants + anything missed
 	// while down), then every 6 hours — also the drift/churn watchdog cadence
-	setTimeout(() => resyncAll("boot").catch(() => {}), 2 * 60 * 1000);
-	setInterval(() => resyncAll("cron").catch(() => {}), 6 * 60 * 60 * 1000);
+	stop();
+	bootTimer = setTimeout(() => resyncAll("boot").catch(() => {}), 2 * 60 * 1000);
+	cronTimer = setInterval(() => resyncAll("cron").catch(() => {}), 6 * 60 * 60 * 1000);
+	bootTimer.unref();
+	cronTimer.unref();
 	console.log("[grantsync] scheduled (boot +2min, then every 6h)");
 }
 
+function stop() {
+	if (bootTimer) clearTimeout(bootTimer);
+	if (cronTimer) clearInterval(cronTimer);
+	bootTimer = null;
+	cronTimer = null;
+}
+
 module.exports = {
-	setClient, start,
+	setClient, start, stop,
 	afterWhitelistChange, resyncClient, resyncAll,
 	fullEntitlement, getGlobalAudioIds, setGlobalAudioIds, parseIds,
 	checkCrossGroup, alertAdmins,

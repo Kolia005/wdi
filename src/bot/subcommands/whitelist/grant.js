@@ -16,7 +16,7 @@ const {
 const Client = require("../../../model/Client.js");
 const Product = require("../../../model/Product.js");
 const Purchase = require("../../../model/Whitelist.js");
-const { refreshDiscordUrl } = require("../../fileDeliver.js");
+const { buildGrantMessage } = require("../../productDelivery.js");
 
 /**
  * A command
@@ -55,12 +55,14 @@ module.exports = async (interaction) => {
         });
     }
 
-    let purchaseRecord = await Purchase.findOne({
+    const grantResult = await Purchase.updateOne({
         product: productRecord._id,
         client: clientRecord._id
-    }).exec();
+    }, {
+        $setOnInsert: { created: new Date() }
+    }, { upsert: true }).exec();
 
-    if (purchaseRecord) {
+    if (!grantResult.upsertedId && grantResult.upsertedCount !== 1) {
         return interaction.editReply({
             embeds: [
                 new EmbedBuilder()
@@ -72,39 +74,13 @@ module.exports = async (interaction) => {
         });
     }
 
-    let purchase = new Purchase({
-        product: productRecord._id,
-        client: clientRecord._id
-    });
-
-    await purchase.save();
-
     if (process.env.ASSET_PERMISSION_GRANTS_ENABLED === "true") {
         require("../../grantSync.js").afterWhitelistChange(clientRecord._id, "whitelist grant");
     }
 
-    const freshUrl = await refreshDiscordUrl(productRecord.fileurl);
-
-    await interaction.options.getUser('mention').send({
-        embeds: [
-            new EmbedBuilder()
-                .setTitle("Product Granted")
-                .setColor("0x2f3136")
-                .addFields(
-                    { name: 'Product', value: `\`${productRecord.name}\``, inline: true },
-                )
-                .setDescription("You have been granted a product.")
-        ],
-        components: [
-            new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setLabel('Download')
-                        .setURL(freshUrl)
-                        .setStyle(ButtonStyle.Link),
-                )
-        ]
-    }).then(async () => {
+    try {
+        const message = await buildGrantMessage(productRecord);
+        await interaction.options.getUser('mention').send(message);
         await interaction.editReply({
             embeds: [
                 new EmbedBuilder()
@@ -113,9 +89,9 @@ module.exports = async (interaction) => {
                     .setDescription("Product given sucessfully.")
             ]
         });
-    }).catch((err) => {
-        console.log(err)
-        interaction.editReply({
+    } catch (err) {
+        console.log("Unable to DM granted product:", err)
+        await interaction.editReply({
             embeds: [
                 new EmbedBuilder()
                     .setTitle("Success")
@@ -123,5 +99,5 @@ module.exports = async (interaction) => {
                     .setDescription("Product given sucessfully. However, we were unable to DM the user")
             ]
         });
-    });
+    }
 }

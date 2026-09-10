@@ -16,7 +16,7 @@ const {
 const Client = require("../../model/Client.js");
 const Product = require("../../model/Product.js");
 const Purchase = require("../../model/Whitelist.js");
-const { refreshDiscordUrl } = require("../fileDeliver.js");
+const { buildGrantMessage } = require("../productDelivery.js");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -65,21 +65,18 @@ module.exports = {
                 continue;
             }
 
-            let purchaseRecord = await Purchase.findOne({
+            const grantResult = await Purchase.updateOne({
                 product: productRecord._id,
                 client: clientRecord._id
-            }).exec();
+            }, {
+                $setOnInsert: { created: new Date() }
+            }, { upsert: true }).exec();
 
-            if (purchaseRecord) {
+            if (!grantResult.upsertedId && grantResult.upsertedCount !== 1) {
                 alreadyHad++;
                 continue;
             }
 
-            let purchaseModel = new Purchase({
-                product: productRecord._id,
-                client: clientRecord._id
-            });
-            await purchaseModel.save();
             granted++;
 
             if (process.env.ASSET_PERMISSION_GRANTS_ENABLED === "true") {
@@ -88,27 +85,8 @@ module.exports = {
 
             console.log(`whitelisted ${clientRecord.discord} for ${productRecord.name}`);
 
-            const freshUrl = await refreshDiscordUrl(productRecord.fileurl);
-            await member.send({
-                embeds: [
-                    new EmbedBuilder()
-                        .setTitle("Product Granted")
-                        .setColor("#2f3136")
-                        .addFields(
-                            { name: 'Product', value: `\`${productRecord.name}\``, inline: true },
-                        )
-                        .setDescription("You have been granted a product.")
-                ],
-                components: [
-                    new ActionRowBuilder()
-                        .addComponents(
-                            new ButtonBuilder()
-                                .setLabel('Download')
-                                .setURL(freshUrl)
-                                .setStyle(ButtonStyle.Link),
-                        )
-                ]
-            }).catch(() => { /* DMs closed — whitelist still applied */ });
+            const message = await buildGrantMessage(productRecord);
+            await member.send(message).catch(() => { /* DMs closed — whitelist still applied */ });
         }
 
         return await interaction.editReply({

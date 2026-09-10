@@ -14,7 +14,7 @@ const {
 } = require("discord.js");
 
 const Roblox = require("../../util/Roblox.js");
-const { refreshDiscordUrl } = require("../fileDeliver.js");
+const { isUsableDownloadUrl, refreshDiscordUrl } = require("../fileDeliver.js");
 
 const Client = require("../../model/Client.js");
 const Product = require("../../model/Product.js");
@@ -87,7 +87,15 @@ module.exports = {
         }
 
         const freshUrl = await refreshDiscordUrl(getPP.fileurl);
-        await interaction.user.send(`${freshUrl}`)
-        await interaction.editReply("check your dms");
+        if (!isUsableDownloadUrl(freshUrl)) {
+            return interaction.editReply("You own this product, but no download file is attached yet. Please contact an administrator.");
+        }
+
+        try {
+            await interaction.user.send(freshUrl);
+            await interaction.editReply("Check your DMs.");
+        } catch (_) {
+            await interaction.editReply("I could not send you a DM. Enable direct messages for this server and try again.");
+        }
     },
 };

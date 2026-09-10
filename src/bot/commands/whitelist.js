@@ -66,14 +66,13 @@ module.exports = {
     run: async (interaction) => {
         switch (interaction.options.getSubcommand()) {
             case "grant":
-                require("../subcommands/whitelist/grant")(interaction);
-                break;
+                return require("../subcommands/whitelist/grant")(interaction);
             case "list":
-                require("../subcommands/whitelist/list")(interaction);
-                break;
+                return require("../subcommands/whitelist/list")(interaction);
             case "revoke":
-                require("../subcommands/whitelist/revoke")(interaction);
-                break;
+                return require("../subcommands/whitelist/revoke")(interaction);
+            default:
+                throw new Error("Unsupported whitelist subcommand");
         }
     },
 };

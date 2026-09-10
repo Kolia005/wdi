@@ -1,5 +1,7 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const { verifLogger } = require("./verifLog.js");
+const bot = require("../bot");
 
 const app = express();
 let mongoClient;
@@ -15,7 +17,22 @@ app.get("/", (_, res) => {
   res.status(200).send("OK");
 });
 
-app.get("/health", (_, res) => res.status(200).json({ok:true,service:"wdi"}));
+app.get("/health", (_, res) => {
+  const databaseReady = mongoose.connection.readyState === 1;
+  const discord = bot.getHealth();
+  const ok = databaseReady && discord.ready;
+  res.status(ok ? 200 : 503).json({
+    ok,
+    service: "wdi",
+    database: { ready: databaseReady, state: mongoose.connection.readyState },
+    discord,
+  });
+});
+
+app.get("/health/api", (_, res) => {
+  const ready = mongoose.connection.readyState === 1;
+  res.status(ready ? 200 : 503).json({ ok: ready, service: "wdi-api", databaseState: mongoose.connection.readyState });
+});
 
 app.get("/gay", (_, res) => {
   res.status(200).send("WORKS");
@@ -32,7 +49,7 @@ app.use("/internal", require("./internal.js"));
 app.use("/wix", require("./wixRoutes.js"));
 app.use("/files", express.static(require("path").join(__dirname, "..", "..", "product-files")));
 
-app.get("*", (_, res) => {
+app.use((_, res) => {
   res.status(404).send("Not Found");
 });
 

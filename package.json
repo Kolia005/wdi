@@ -4,8 +4,12 @@
   "description": "estore provides services where users can sell their creations.",
   "main": "src/index.js",
   "scripts": {
-    "test": "echo \"Set TRANSFER_TEST_DB_URI and run npm run test:transfer\"",
+    "test": "node --test test/*.test.js",
+    "check": "node test/commands.smoke.js",
     "test:transfer": "node test/transferService.integration.js"
+  },
+  "engines": {
+    "node": ">=24.17.0"
   },
   "repository": {
     "type": "git",
@@ -25,15 +29,12 @@
   },
   "homepage": "https://github.com/IsEmil/estore#readme",
   "dependencies": {
-    "@discordjs/rest": "^0.5.0",
     "assert": "^2.0.0",
-    "axios": "^0.27.2",
-    "btoa": "^1.2.1",
-    "discord-api-types": "^0.33.5",
-    "discord.js": "^14.0.3",
+    "axios": "1.20.0",
+    "discord.js": "14.27.0",
     "dotenv": "^16.0.1",
-    "express": "^4.18.1",
-    "mongoose": "^6.3.5",
+    "express": "5.2.1",
+    "mongoose": "6.13.11",
     "node-fetch": "^2.6.7"
   }
 }

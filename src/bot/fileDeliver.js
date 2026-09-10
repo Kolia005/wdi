@@ -6,8 +6,19 @@ const axios = require("axios");
 const cache = new Map(); // staleUrl -> { fresh, at }
 const TTL = 1000 * 60 * 60 * 20; // 20h (Discord fresh links last ~24h)
 
+function isUsableDownloadUrl(value) {
+	if (typeof value !== "string" || !value.trim()) return false;
+	try {
+		const parsed = new URL(value);
+		return parsed.protocol === "https:" || parsed.protocol === "http:";
+	} catch (_) {
+		return false;
+	}
+}
+
 async function refreshDiscordUrl(staleUrl) {
-	if (!staleUrl || !/cdn\.discordapp\.com/.test(staleUrl)) return staleUrl; // not a discord url, pass through
+	if (!isUsableDownloadUrl(staleUrl)) return null;
+	if (!/cdn\.discordapp\.com/.test(staleUrl)) return staleUrl; // not a discord url, pass through
 	const hit = cache.get(staleUrl);
 	if (hit && Date.now() - hit.at < TTL) return hit.fresh;
 	try {
@@ -25,7 +36,7 @@ async function refreshDiscordUrl(staleUrl) {
 	} catch (e) {
 		console.log("[fileDeliver] refresh failed:", e.message);
 	}
-	return staleUrl; // fall back to the stale one (better than nothing)
+	return isUsableDownloadUrl(staleUrl) ? staleUrl : null;
 }
 
-module.exports = { refreshDiscordUrl };
+module.exports = { isUsableDownloadUrl, refreshDiscordUrl };

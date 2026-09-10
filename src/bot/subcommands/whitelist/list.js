@@ -47,7 +47,7 @@ module.exports = async (interaction) => {
         .setColor("0x2f3136")
         .setTitle(`Current Whitelists Of ${productRecord.name}`)
         .setDescription(`**Whitelists**\n${purchaseRecord.length <= 0 ? "No whitelists" : purchaseRecord.map(p => `<@${p.client.discord}> (${p.client.roblox})`).join("\n")}`)
-    interaction.editReply({
+    return interaction.editReply({
         embeds: [embed]
     });
 }
