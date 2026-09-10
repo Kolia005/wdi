@@ -1,4 +1,4 @@
-const { WebSocketShardStatus } = require("discord.js");
+const { Status } = require("discord.js");
 
 let client;
 let readyAt = null;
@@ -25,7 +25,7 @@ function markDisconnected(reason) {
 }
 
 function isReady() {
-    return Boolean(client && client.isReady() && client.ws.status === WebSocketShardStatus.Ready);
+    return Boolean(client && client.isReady() && client.ws.status === Status.Ready);
 }
 
 function snapshot() {
