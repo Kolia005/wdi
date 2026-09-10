@@ -3,6 +3,9 @@ const mongoose = require("mongoose");
 const startHttp = require("./http");
 const bot = require("./bot");
 
+// Preserve Mongoose 6 query behavior explicitly and keep production logs warning-free.
+mongoose.set("strictQuery", true);
+
 let shuttingDown = false;
 
 function fatal(kind, error) {
