@@ -50,7 +50,7 @@ module.exports = {
                 embeds: [
                     new EmbedBuilder()
                         .setTitle("Error")
-                        .setColor("0x2f3136")
+                        .setColor("#2f3136")
                         .setDescription("You are not linked with WDI. Please run `/link` to link your account.")
                 ],
                 ephemeral: true
@@ -66,7 +66,7 @@ module.exports = {
 
         let Embed = new EmbedBuilder()
             .setAuthor({ name: `${robloxUsername}`, iconURL: `https://www.roblox.com/headshot-thumbnail/image?userId=${getClient.roblox}&width=420&height=420` })
-            .setColor("0x2f3136")
+            .setColor("#2f3136")
             .setThumbnail(`https://www.roblox.com/headshot-thumbnail/image?userId=${getClient.roblox}&width=420&height=420&format=png`)
             .setDescription(`**Whitelists**\n${getPurchase.length <= 0 ? "No whitelists" : getPurchase.map(p => p.product ? p.product.name : "(deleted product)").join("\n")}`)
             .setFooter({

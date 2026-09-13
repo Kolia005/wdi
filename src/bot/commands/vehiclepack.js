@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, Interaction, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
 const { setVehiclePackPolicy } = require("../../http/util/vehiclePackPolicy.js");
 
-const COLOR = "0x2f3136";
+const COLOR = "#2f3136";
 const embed = (title, description) => new EmbedBuilder().setTitle(title).setColor(COLOR).setDescription(description);
 
 module.exports = {

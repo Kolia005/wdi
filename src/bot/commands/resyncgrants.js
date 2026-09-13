@@ -10,7 +10,7 @@ const ExperienceGrant = require("../../model/ExperienceGrant.js");
 const grantSync = require("../grantSync.js");
 const { resolveRobloxId } = require("../wixPurchase.js");
 
-const COLOR = "0x2f3136";
+const COLOR = "#2f3136";
 const embed = (t, d) => new EmbedBuilder().setTitle(t).setDescription(d).setColor(COLOR);
 
 module.exports = {

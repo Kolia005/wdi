@@ -10,7 +10,7 @@ const axios = require("axios");
 const Roblox = require("../../util/Roblox.js");
 const Client = require("../../model/Client.js");
 
-const COLOR = "0x2f3136";
+const COLOR = "#2f3136";
 const embed = (title, desc) => new EmbedBuilder().setTitle(title).setColor(COLOR).setDescription(desc);
 
 const SELECT_ID = "select_verify_method";

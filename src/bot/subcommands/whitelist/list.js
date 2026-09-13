@@ -31,7 +31,7 @@ module.exports = async (interaction) => {
             embeds: [
                 new EmbedBuilder()
                     .setTitle("Error")
-                    .setColor("0x2f3136")
+                    .setColor("#2f3136")
                     .setDescription("There is no product with that name.")
             ],
             ephemeral: true
@@ -44,7 +44,7 @@ module.exports = async (interaction) => {
 
     console.log(purchaseRecord)
     let embed = new EmbedBuilder()
-        .setColor("0x2f3136")
+        .setColor("#2f3136")
         .setTitle(`Current Whitelists Of ${productRecord.name}`)
         .setDescription(`**Whitelists**\n${purchaseRecord.length <= 0 ? "No whitelists" : purchaseRecord.map(p => `<@${p.client.discord}> (${p.client.roblox})`).join("\n")}`)
     return interaction.editReply({

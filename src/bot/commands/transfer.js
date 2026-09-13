@@ -15,7 +15,7 @@ const Roblox = require("../../util/Roblox.js");
 const { resolveRobloxId } = require("../wixPurchase.js");
 const transferService = require("../transferService.js");
 
-const COLOR = "0x2f3136";
+const COLOR = "#2f3136";
 const embed = (title, desc) => new EmbedBuilder().setTitle(title).setDescription(desc).setColor(COLOR);
 
 // Get a client's whitelists with product names attached.

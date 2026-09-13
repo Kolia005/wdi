@@ -44,7 +44,7 @@ module.exports = {
                 embeds: [
                     new EmbedBuilder()
                         .setTitle("Error")
-                        .setColor("0x2f3136")
+                        .setColor("#2f3136")
                         .setDescription("You are not linked with WDI. Please run `/link` to link your account.")
                 ],
                 ephemeral: true
@@ -60,7 +60,7 @@ module.exports = {
                 embeds: [
                     new EmbedBuilder()
                         .setTitle("Error")
-                        .setColor("0x2f3136")
+                        .setColor("#2f3136")
                         .setDescription("This product does not exist.")
                 ],
                 ephemeral: true
@@ -79,7 +79,7 @@ module.exports = {
                 embeds: [
                     new EmbedBuilder()
                         .setTitle("Error")
-                        .setColor("0x2f3136")
+                        .setColor("#2f3136")
                         .setDescription("You dont own product.")
                 ],
                 ephemeral: true

@@ -32,7 +32,7 @@ module.exports = async (interaction) => {
             embeds: [
                 new EmbedBuilder()
                     .setTitle("Error")
-                    .setColor("0x2f3136")
+                    .setColor("#2f3136")
                     .setDescription("Client is not linked with eStore.")
             ],
             ephemeral: true
@@ -48,7 +48,7 @@ module.exports = async (interaction) => {
             embeds: [
                 new EmbedBuilder()
                     .setTitle("Error")
-                    .setColor("0x2f3136")
+                    .setColor("#2f3136")
                     .setDescription("There is no product with that name.")
             ],
             ephemeral: true
@@ -67,7 +67,7 @@ module.exports = async (interaction) => {
             embeds: [
                 new EmbedBuilder()
                     .setTitle("Error")
-                    .setColor("0x2f3136")
+                    .setColor("#2f3136")
                     .setDescription("This user already has this product whitelisted.")
             ],
             ephemeral: true
@@ -85,7 +85,7 @@ module.exports = async (interaction) => {
             embeds: [
                 new EmbedBuilder()
                     .setTitle("Success")
-                    .setColor("0x2f3136")
+                    .setColor("#2f3136")
                     .setDescription("Product given sucessfully.")
             ]
         });
@@ -95,7 +95,7 @@ module.exports = async (interaction) => {
             embeds: [
                 new EmbedBuilder()
                     .setTitle("Success")
-                    .setColor("0x2f3136")
+                    .setColor("#2f3136")
                     .setDescription("Product given sucessfully. However, we were unable to DM the user")
             ]
         });

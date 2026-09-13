@@ -1,6 +1,6 @@
 const { Interaction, EmbedBuilder } = require("discord.js");
 
-const errEmbed = (desc) => new EmbedBuilder().setTitle("Error").setDescription(desc).setColor("0x2f3136");
+const errEmbed = (desc) => new EmbedBuilder().setTitle("Error").setDescription(desc).setColor("#2f3136");
 
 /**
  * @param {discord.Client} client

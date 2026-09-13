@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, Interaction, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
 const Setting = require("../../model/Setting.js");
 
-const COLOR = "0x2f3136";
+const COLOR = "#2f3136";
 const KEY = "packEnforcement";
 const embed = (t, d) => new EmbedBuilder().setTitle(t).setColor(COLOR).setDescription(d);
 

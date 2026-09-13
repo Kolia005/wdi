@@ -31,7 +31,7 @@ module.exports = async (interaction) => {
             embeds: [
                 new EmbedBuilder()
                     .setTitle("Error")
-                    .setColor("0x2f3136")
+                    .setColor("#2f3136")
                     .setDescription("Client is not linked with eStore.")
             ],
             ephemeral: true
@@ -47,7 +47,7 @@ module.exports = async (interaction) => {
             embeds: [
                 new EmbedBuilder()
                     .setTitle("Error")
-                    .setColor("0x2f3136")
+                    .setColor("#2f3136")
                     .setDescription("There is no product with that name.")
             ],
             ephemeral: true
@@ -64,7 +64,7 @@ module.exports = async (interaction) => {
             embeds: [
                 new EmbedBuilder()
                     .setTitle("Error")
-                    .setColor("0x2f3136")
+                    .setColor("#2f3136")
                     .setDescription("Client does not have a whitelist for this product.")
             ],
             ephemeral: true
@@ -79,7 +79,7 @@ module.exports = async (interaction) => {
         embeds: [
             new EmbedBuilder()
                 .setTitle("Success")
-                .setColor("0x2f3136")
+                .setColor("#2f3136")
                 .setDescription("Product revoked sucessfully.")
         ]
     }); 
