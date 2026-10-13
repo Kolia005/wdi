@@ -14,6 +14,7 @@ const KillList = require("../../model/KillList.js");
 const Setting = require("../../model/Setting.js");
 const { getVehiclePackPolicy } = require("../util/vehiclePackPolicy.js");
 const wrapAsync = require("../util/wrapAsync.js");
+const { getAccessCampaign, effectiveEnforcement, noticeFor } = require("../util/accessCampaign.js");
 
 async function isKilled(universeId, place, ownerId) {
     const or = [];
@@ -44,16 +45,18 @@ module.exports = wrapAsync(async (req, res) => {
     const { universeId, ownerId } = await resolveOwner(place, universe);
     // entitlement = what the resolved owner owns, UNION explicit per-universe grants (covers private /
     // unresolvable games whose owner API returns id 0 / "[UNKNOWN]"). Never derived from owner "0".
-    const [ownerPacks, uniPacks, killed, enf, vpack] = await Promise.all([
+    const [ownerPacks, uniPacks, killed, baseEnf, vpack, campaign] = await Promise.all([
         fullEntitlement(ownerId),
         universeGrants(universeId),
         isKilled(universeId, place, ownerId),
         enforcementMap(),
         getVehiclePackPolicy(),
+        getAccessCampaign(),
     ]);
     const packs = [...new Set([...ownerPacks, ...uniPacks])];
+    const enf = effectiveEnforcement(baseEnf, campaign);
 
-    const lic = !killed && (products.length ? products.every(p => packs.includes(p)) : packs.length > 0);
+    const lic = !killed && (products.length ? products.every(p => packs.includes(p) || enf[p] === 'off') : packs.length > 0);
 
     const payload = {
         u: universeId ? String(universeId) : null,
@@ -66,6 +69,7 @@ module.exports = wrapAsync(async (req, res) => {
         vpack,                     // remotely managed vehicle -> pack policy (global, signed)
         iat: Math.floor(Date.now() / 1000),
         nonce,
+        notice: noticeFor(campaign, products), // owner-controlled text; covered by the existing signature.
     };
 
     // Licensing is intentionally read-only. Asset distribution/permissions are

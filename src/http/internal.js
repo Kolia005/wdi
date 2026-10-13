@@ -102,6 +102,24 @@ router.post("/unkill", async (req, res) => {
 // --- Pack enforcement level (dashboard-controlled remote toggle). full | entitlement | off ---
 const Setting = require("../model/Setting.js");
 const { getVehiclePackPolicy, setVehiclePackPolicy } = require("./util/vehiclePackPolicy.js");
+const accessCampaign = require("./util/accessCampaign.js");
+
+router.get("/access-campaign", async (_req, res) => {
+    try { res.json({ ok: true, campaign: await accessCampaign.getAccessCampaign() }); }
+    catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+router.post("/access-campaign", async (req, res) => {
+    try { res.json({ ok: true, campaign: await accessCampaign.saveNotice(req.body || {}) }); }
+    catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+router.post("/access-campaign/start", async (_req, res) => {
+    try { res.json({ ok: true, campaign: await accessCampaign.startTrial() }); }
+    catch (e) { res.status(409).json({ ok: false, error: e.message }); }
+});
+router.post("/access-campaign/end", async (_req, res) => {
+    try { res.json({ ok: true, campaign: await accessCampaign.endTrial() }); }
+    catch (e) { res.status(409).json({ ok: false, error: e.message }); }
+});
 
 router.get("/enforce", async (_req, res) => {
 	try {
